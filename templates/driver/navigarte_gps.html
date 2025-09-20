@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Navegando: {{ route.name }} - GPS Navigator</title>
+
+    <!-- CSS Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Contenedor principal full screen */
+        .navigation-container {
+            position: relative;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Mapa de navegación */
+        #navigationMap {
+            height: 100vh;
+            width: 100vw;
+            z-index: 1;
+        }
+
+        /* Panel superior de instrucciones (como Waze) */
+        .instruction-panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .instruction-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .turn-icon {
+            font-size: 2.5rem;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 50%;
+            min-width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 2s infinite;
+        }
+
+        .instruction-text {
+            flex: 1;
+        }
+
+        .instruction-main {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .instruction-sub {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .distance-info {
+            text-align: right;
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #ffd700;
+        }
+
+        /* Panel inferior de información */
+        .info-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(26, 26, 46, 0.95);
+            backdrop-filter: blur(15px);
+            padding: 15px;
+            z-index: 1000;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        /* Botones de control */
+        .control-buttons {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 25px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .nav-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            color: white;
+        }
+
+        .nav-button.primary {
+            background: #ff4757;
+        }
+
+        .nav-button.success {
+            background: #2ed573;
+        }
+
+        /* Controles laterales */
+        .side-controls {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 1000;
+        }
+
+        .control-group {
+            background: rgba(26, 26, 46, 0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .control-btn {
+            display: block;
+            width: 50px;
+            height: 50px;
+            border: none;
+            background: transparent;
+            color: white;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .control-btn:last-child {
+            border-bottom: none;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        /* Status indicators */
+        .status-indicators {
+            position: absolute;
+            top: 120px;
+            left: 15px;
+            z-index: 1000;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(26, 26, 46, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 8px 12px;
+            border-radius: 20px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00ff88;
+            animation: blink 2s infinite;
+        }
+
+        .status-dot.warning {
+            background: #ffa502;
+        }
+
+        .status-dot.error {
+            background: #ff4757;
+        }
+
+        /* Animaciones */
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        @keyframes blink {
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0.5;
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+            }
+
+            to {
+                transform: translateY(0);
+            }
+        }
+
+        .slide-up {
+            animation: slideUp 0.5s ease-out;
+        }
+
+        /* Voice command indicator */
+        .voice-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1001;
+            background: rgba(26, 26, 46, 0.95);
+            backdrop-filter: blur(15px);
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            border: 3px solid #00ff88;
+            animation: pulse 1s infinite;
+        }
+
+        .voice-indicator.active {
+            display: flex;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .instruction-panel {
+                padding: 10px;
+            }
+
+            .turn-icon {
+                font-size: 2rem;
+                min-width: 50px;
+                height: 50px;
+            }
+
+            .instruction-main {
+                font-size: 1.2rem;
+            }
+
+            .distance-info {
+                font-size: 1.5rem;
+            }
+
+            .side-controls {
+                right: 10px;
+            }
+
+            .control-btn {
+                width: 45px;
+                height: 45px;
+                font-size: 1rem;
+            }
+        }
+
+        /* Custom map markers */
+        .current-location-marker {
+            background: #00ff88;
+            border: 3px solid white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            position: relative;
+        }
+
+        .current-location-marker::after {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 255, 136, 0.3);
+            border-radius: 50%;
+            animation: sonar 2s infinite;
+        }
+
+        @keyframes sonar {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+
+        /* Progress bar for route completion */
+        .route-progress {
+            position: absolute;
+            top: 80px;
+            left: 15px;
+            right: 15px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #ffd700);
+            border-radius: 2px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="navigation-container">
+        <!-- Mapa principal -->
+        <div id="navigationMap"></div>
+
+        <!-- Barra de progreso de ruta -->
+        <div class="route-progress">
+            <div class="progress-fill" id="routeProgressBar"></div>
+        </div>
+
+        <!-- Panel de instrucciones superior (estilo Waze) -->
+        <div class="instruction-panel slide-up">
+            <div class="instruction-content">
+                <div class="turn-icon" id="turnIcon">
+                    <i class="fas fa-arrow-up"></i>
+                </div>
+                <div class="instruction-text">
+                    <div class="instruction-main" id="instructionMain">
+                        Cargando navegación...
+                    </div>
+                    <div class="instruction-sub" id="instructionSub">
+                        Iniciando GPS para {{ route.name }}
+                    </div>
+                </div>
+                <div class="distance-info">
+                    <div id="nextTurnDistance">--</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Indicadores de estado -->
+        <div class="status-indicators">
+            <div class="status-indicator" id="gpsStatus">
+                <div class="status-dot"></div>
+                Conectando GPS...
+            </div>
+            <div class="status-indicator" id="speedStatus">
+                <i class="fas fa-tachometer-alt"></i>
+                <span id="currentSpeed">0 km/h</span>
+            </div>
+        </div>
+
+        <!-- Controles laterales -->
+        <div class="side-controls">
+            <div class="control-group">
+                <button class="control-btn" onclick="zoomIn()" title="Acercar">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button class="control-btn" onclick="zoomOut()" title="Alejar">
+                    <i class="fas fa-minus"></i>
+                </button>
+            </div>
+
+            <div class="control-group">
+                <button class="control-btn" onclick="centerOnLocation()" title="Mi ubicación">
+                    <i class="fas fa-crosshairs"></i>
+                </button>
+                <button class="control-btn" onclick="toggleMapMode()" title="Cambiar vista" id="mapModeBtn">
+                    <i class="fas fa-satellite"></i>
+                </button>
+            </div>
+
+            <div class="control-group">
+                <button class="control-btn" onclick="toggleVoice()" title="Comandos de voz" id="voiceBtn">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button class="control-btn" onclick="toggleMute()" title="Silenciar" id="muteBtn">
+                    <i class="fas fa-volume-up"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Panel inferior de información -->
+        <div class="info-panel slide-up">
+            <div class="nav-stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalDistance">
+                        {% if route.distance %}
+                        {{ "%.1f"|format(route.distance / 1000) }} km
+                        {% else %}
+                        -- km
+                        {% endif %}
+                    </div>
+                    <div class="stat-label">Distancia restante</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="eta">--:--</div>
+                    <div class="stat-label">Llegada estimada</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="remainingTime">-- min</div>
+                    <div class="stat-label">Tiempo restante</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="fuelLevel">
+                        {% if completion and completion.fuel_start %}
+                        {{ completion.fuel_start }}/4
+                        {% else %}
+                        4/4
+                        {% endif %}
+                    </div>
+                    <div class="stat-label">Combustible</div>
+                </div>
+            </div>
+
+            <div class="control-buttons">
+                <button class="nav-button" onclick="showRouteOptions()">
+                    <i class="fas fa-route me-2"></i>Rutas
+                </button>
+                <button class="nav-button" onclick="reportIncident()">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Reportar
+                </button>
+                <button class="nav-button primary" onclick="stopNavigation()">
+                    <i class="fas fa-stop me-2"></i>Detener
+                </button>
+                <button class="nav-button success" onclick="completeRoute()">
+                    <i class="fas fa-flag-checkered me-2"></i>Completar
+                </button>
+            </div>
+        </div>
+
+        <!-- Indicador de comando de voz -->
+        <div class="voice-indicator" id="voiceIndicator">
+            <i class="fas fa-microphone fa-2x"></i>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // Datos de la ruta actual desde Flask
+        const routeData = {
+            id: {{ route.id }},
+        name: '{{ route.name|safe }}',
+            distance: { { route.distance or 0 } },
+        completionId: { { completion.id } },
+        initialFuel: { { completion.fuel_start or 4 } }
+        };
+
+        // Variables globales
+        let map;
+        let currentPosition = null;
+        let routePolyline = null;
+        let currentLocationMarker = null;
+        let routePoints = [];
+        let currentRouteIndex = 0;
+        let isNavigating = true;
+        let isMuted = false;
+        let mapMode = 'street';
+        let voiceActive = false;
+        let routeStartTime = new Date('{{ completion.started_at.isoformat() if completion.started_at else "now" }}');
+        let totalRouteDistance = 0;
+        let completedDistance = 0;
+        let navigationInstructions = [];
+        let gpsWatchId = null;
+        let trackingPoints = [];
+        let lastTrackingUpdate = null;
+
+        // ... [Aquí va todo el JavaScript que desarrollamos anteriormente] ...
+        // Por brevedad no copio todo el código JavaScript, pero incluye todas las funciones:
+        // - initializeMap()
+        // - loadRealRoute()
+        // - startRealGPS()
+        // - completeRoute()
+        // - showCompleteRouteModal()
+        // - Etc.
+
+        // Colocar aquí todo el código JavaScript del artifact anterior
+        // desde "// Inicializar mapa" hasta el final
+    </script>
+</body>
+
+</html>

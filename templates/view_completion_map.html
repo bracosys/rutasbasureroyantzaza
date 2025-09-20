@@ -1,0 +1,479 @@
+<{% extends "base.html" %} {% block title %}Recorrido Completado - {{ completion.route.name }} - Sistema de Optimización
+    de Rutas{% endblock %} {% block page_title %}Recorrido Completado: {{ completion.route.name }}{% endblock %} {%
+    block sidebar_items %} {% if current_user.is_admin %} <li class="nav-item">
+    <a href="{{ url_for('admin_dashboard') }}" class="nav-link">
+        <i class="fas fa-tachometer-alt me-2"></i> Dashboard Admin
+    </a>
+    </li>
+    <li class="nav-item">
+        <a href="{{ url_for('manage_routes') }}" class="nav-link">
+            <i class="fas fa-route me-2"></i> Gestionar Rutas
+        </a>
+    </li>
+    {% elif current_user.is_coordinator %}
+    <li class="nav-item">
+        <a href="{{ url_for('coordinator_dashboard') }}" class="nav-link">
+            <i class="fas fa-tachometer-alt me-2"></i> Dashboard
+        </a>
+    </li>
+    <li class="nav-item">
+        <a href="{{ url_for('coordinator_view_routes') }}" class="nav-link">
+            <i class="fas fa-route me-2"></i> Ver Rutas
+        </a>
+    </li>
+    {% else %}
+    <li class="nav-item">
+        <a href="{{ url_for('driver_dashboard') }}" class="nav-link">
+            <i class="fas fa-tachometer-alt me-2"></i> Dashboard
+        </a>
+    </li>
+    <li class="nav-item">
+        <a href="{{ url_for('driver_route_history') }}" class="nav-link">
+            <i class="fas fa-history me-2"></i> Historial de rutas
+        </a>
+    </li>
+    {% endif %}
+    {% endblock %}
+
+    {% block content %}
+    <!-- Header con información del estado -->
+    <div class="d-sm-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="fas fa-map-marked-alt text-primary"></i>
+                Recorrido Completado
+            </h1>
+            <p class="text-muted mb-0">{{ completion.route.name }}</p>
+        </div>
+        <div>
+            <span class="badge badge-success badge-lg">
+                <i class="fas fa-check-circle"></i>
+                Completado el {{ completion.completed_at|datetime_format('%d/%m/%Y') }}
+            </span>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Panel de información lateral -->
+        <div class="col-xl-4 col-lg-5">
+            <!-- Información general -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-info-circle me-2"></i>Información General
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <small class="text-muted">Conductor</small>
+                        <div class="font-weight-bold">
+                            {{ completion.driver.first_name }} {{ completion.driver.last_name }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <small class="text-muted">Vehículo</small>
+                        <div class="font-weight-bold">
+                            {{ completion.vehicle.brand }} {{ completion.vehicle.model }}
+                            <br><small class="text-muted">({{ completion.vehicle.plate_number }})</small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <small class="text-muted">Fecha del recorrido</small>
+                        <div class="font-weight-bold">
+                            {{ completion.completed_at|datetime_format('%d/%m/%Y a las %H:%M') }}
+                        </div>
+                    </div>
+
+                    {% if completion.notes %}
+                    <div class="mb-3">
+                        <small class="text-muted">Notas del conductor</small>
+                        <div class="text-dark">{{ completion.notes }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Métricas de tiempo -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-clock me-2"></i>Duración del Recorrido
+                    </h6>
+                </div>
+                <div class="card-body text-center">
+                    {% if completion.started_at and completion.completed_at %}
+                    {% set duration = completion.completed_at - completion.started_at %}
+                    <div class="h2 text-primary font-weight-bold mb-2">
+                        {{ "{:02d}:{:02d}:{:02d}".format(
+                        duration.seconds // 3600,
+                        (duration.seconds % 3600) // 60,
+                        duration.seconds % 60
+                        ) }}
+                    </div>
+                    <div class="row">
+                        <div class="col-6">
+                            <small class="text-muted">Inicio</small>
+                            <div class="font-weight-bold">{{ completion.started_at|datetime_format('%H:%M') }}</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Fin</small>
+                            <div class="font-weight-bold">{{ completion.completed_at|datetime_format('%H:%M') }}</div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="h4 text-muted">N/A</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Métricas de combustible -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-warning">
+                        <i class="fas fa-gas-pump me-2"></i>Combustible
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <small class="text-muted">Inicial</small>
+                            <div class="d-flex align-items-center">
+                                <span class="font-weight-bold me-2">{{ completion.fuel_start }}/4</span>
+                                <div class="progress flex-fill" style="height: 8px;">
+                                    <div class="progress-bar bg-gradient-info" role="progressbar"
+                                        style="width: {{ (completion.fuel_start / 4 * 100) }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Final</small>
+                            <div class="d-flex align-items-center">
+                                <span class="font-weight-bold me-2">{{ completion.fuel_end }}/4</span>
+                                <div class="progress flex-fill" style="height: 8px;">
+                                    <div class="progress-bar bg-gradient-info" role="progressbar"
+                                        style="width: {{ (completion.fuel_end / 4 * 100) }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="text-center">
+                        <small class="text-muted">Consumo Total</small>
+                        <div class="h4 mb-0 
+                        {% if completion.fuel_consumption > 0 %}text-danger
+                        {% elif completion.fuel_consumption < 0 %}text-success
+                        {% else %}text-warning{% endif %}">
+                            {% if completion.fuel_consumption > 0 %}
+                            <i class="fas fa-arrow-down"></i> {{ completion.fuel_consumption }}/4 tanques
+                            {% elif completion.fuel_consumption < 0 %} <i class="fas fa-arrow-up"></i> +{{
+                                abs(completion.fuel_consumption) }}/4 (recarga)
+                                {% else %}
+                                <i class="fas fa-minus"></i> Sin cambio
+                                {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Datos del tracking -->
+            {% if completion.track_data %}
+            {% set track_points = completion.track_data|from_json %}
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-success">
+                        <i class="fas fa-route me-2"></i>Datos de Tracking GPS
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <small class="text-muted">Puntos registrados</small>
+                            <div class="h4 text-primary font-weight-bold">{{ track_points|length }}</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Frecuencia promedio</small>
+                            <div class="h4 text-info font-weight-bold">
+                                {% if completion.started_at and completion.completed_at and track_points|length > 1 %}
+                                {% set duration_seconds = (completion.completed_at -
+                                completion.started_at).total_seconds() %}
+                                {% set avg_interval = duration_seconds / (track_points|length - 1) %}
+                                {{ "%.0f"|format(avg_interval) }}s
+                                {% else %}
+                                N/A
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if track_points|length > 0 %}
+                    <hr>
+                    <div class="text-center">
+                        <small class="text-success">
+                            <i class="fas fa-check-circle"></i>
+                            Recorrido registrado exitosamente
+                        </small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Botón de regreso -->
+            <div class="text-center mb-4">
+                <a href="javascript:history.back()" class="btn btn-primary btn-icon-split">
+                    <span class="icon text-white-50">
+                        <i class="fas fa-arrow-left"></i>
+                    </span>
+                    <span class="text">Regresar</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Mapa del recorrido -->
+        <div class="col-xl-8 col-lg-7">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-map me-2"></i>Mapa del Recorrido Real
+                    </h6>
+                    <div class="dropdown no-arrow">
+                        <a class="dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-toggle="dropdown"
+                            aria-haspopup="true" aria-expanded="false">
+                            <i class="fas fa-ellipsis-v fa-sm fa-fw text-gray-400"></i>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-right shadow animated--fade-in"
+                            aria-labelledby="dropdownMenuLink">
+                            {% if completion.track_map_path %}
+                            <a class="dropdown-item"
+                                href="{{ url_for('download_completion_map', completion_id=completion.id) }}">
+                                <i class="fas fa-download fa-sm fa-fw mr-2 text-gray-400"></i>
+                                Descargar Mapa
+                            </a>
+                            {% endif %}
+                            <a class="dropdown-item" href="#" onclick="printMap()">
+                                <i class="fas fa-print fa-sm fa-fw mr-2 text-gray-400"></i>
+                                Imprimir
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-body p-0">
+                    {% if map_html %}
+                    <div style="height: 70vh; width: 100%;">
+                        {{ map_html|safe }}
+                    </div>
+                    {% else %}
+                    <div class="p-5 text-center">
+                        <div class="text-gray-300 mb-4">
+                            <i class="fas fa-exclamation-triangle fa-3x"></i>
+                        </div>
+                        <h5 class="text-gray-600">Mapa no disponible</h5>
+                        <p class="text-gray-500 mb-4">
+                            No se pudo cargar el mapa del recorrido para esta ruta.
+                            Esto puede ocurrir si no se registraron datos de GPS durante el recorrido.
+                        </p>
+                        {% if current_user.is_admin %}
+                        <a href="{{ url_for('migrate_completion_maps') }}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-sync me-1"></i>Regenerar Mapas
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Información adicional sobre la ruta -->
+            {% if completion.route.distance or completion.route.description %}
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-info">
+                        <i class="fas fa-info-circle me-2"></i>Información de la Ruta
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if completion.route.distance %}
+                    <div class="mb-3">
+                        <small class="text-muted">Distancia planificada</small>
+                        <div class="font-weight-bold">{{ completion.route.distance|distance_format }}</div>
+                    </div>
+                    {% endif %}
+
+                    {% if completion.route.description %}
+                    <div class="mb-3">
+                        <small class="text-muted">Descripción de la ruta</small>
+                        <div class="text-dark">{{ completion.route.description }}</div>
+                    </div>
+                    {% endif %}
+
+                    {% if completion.route.distance_saved_km and completion.route.distance_saved_km > 0 %}
+                    <div class="alert alert-success border-left-success">
+                        <i class="fas fa-leaf text-success"></i>
+                        <strong>Ruta Optimizada:</strong>
+                        Se ahorraron {{ completion.route.distance_saved_km|format_distance_saved }}
+                        ({{ completion.route.distance_saved_percent }}% de mejora)
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endblock %}
+
+    {% block extra_css %}
+    <style>
+        /* Estilos adicionales para el mapa de recorrido */
+        .badge-lg {
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+        }
+
+        .progress {
+            border-radius: 10px;
+        }
+
+        .progress-bar {
+            border-radius: 10px;
+        }
+
+        /* Mejorar la visualización de métricas */
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        /* Estilo para el mapa responsive */
+        .map-responsive {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .map-responsive iframe,
+        .map-responsive div {
+            border: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Mejorar la legibilidad en móviles */
+        @media (max-width: 768px) {
+            .card-body {
+                padding: 1rem;
+            }
+
+            .h2 {
+                font-size: 1.5rem;
+            }
+
+            .map-responsive {
+                height: 50vh !important;
+            }
+        }
+
+        /* Animaciones sutiles */
+        .card {
+            transition: transform 0.2s ease-in-out;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+        }
+
+        /* Mejorar el contraste de texto */
+        .text-gray-600 {
+            color: #5a5c69 !important;
+        }
+
+        .text-gray-500 {
+            color: #858796 !important;
+        }
+
+        .text-gray-300 {
+            color: #d1d3e2 !important;
+        }
+    </style>
+    {% endblock %}
+
+    {% block extra_js %}
+    <script>
+        // Función para imprimir el mapa
+        function printMap() {
+            // Crear una nueva ventana con solo el contenido del mapa
+            const mapContent = document.querySelector('.card-body').innerHTML;
+            const printWindow = window.open('', '_blank');
+
+            printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Mapa de Recorrido - {{ completion.route.name }}</title>
+                <style>
+                    body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+                    .header { text-align: center; margin-bottom: 20px; }
+                    .map-container { width: 100%; height: 80vh; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>Recorrido: {{ completion.route.name }}</h2>
+                    <p>Conductor: {{ completion.driver.first_name }} {{ completion.driver.last_name }}</p>
+                    <p>Fecha: {{ completion.completed_at|datetime_format('%d/%m/%Y %H:%M') }}</p>
+                </div>
+                <div class="map-container">
+                    ${mapContent}
+                </div>
+            </body>
+            </html>
+        `);
+
+            printWindow.document.close();
+
+            // Esperar a que se cargue el contenido antes de imprimir
+            setTimeout(() => {
+                printWindow.print();
+                printWindow.close();
+            }, 1000);
+        }
+
+        // Asegurar que el mapa se redimensione correctamente
+        window.addEventListener('resize', function () {
+            // Si hay un mapa de Leaflet cargado, redimensionarlo
+            if (window.map && typeof window.map.invalidateSize === 'function') {
+                setTimeout(function () {
+                    window.map.invalidateSize();
+                }, 100);
+            }
+        });
+
+        // Mejorar la experiencia en dispositivos móviles
+        document.addEventListener('DOMContentLoaded', function () {
+            // Detectar si es un dispositivo móvil
+            if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+                // Ajustar la altura del mapa en móviles
+                const mapContainer = document.querySelector('.card-body div[style*="height"]');
+                if (mapContainer) {
+                    mapContainer.style.height = '50vh';
+                }
+            }
+        });
+
+        // Debug info
+        console.log('=== COMPLETION MAP DEBUG ===');
+        console.log('Completion ID:', {{ completion.id }});
+        console.log('Route:', '{{ completion.route.name }}');
+        console.log('Driver:', '{{ completion.driver.first_name }} {{ completion.driver.last_name }}');
+        console.log('Vehicle:', '{{ completion.vehicle.plate_number }}');
+        console.log('Has map:', {{ 'true' if map_html else 'false' }});
+        console.log('Has tracking data:', {{ 'true' if completion.track_data else 'false' }});
+        {% if completion.track_data %}
+        console.log('Tracking points:', {{ completion.track_data | from_json | length }});
+        {% endif %}
+        console.log('==========================');
+    </script>
+    {% endblock %}
