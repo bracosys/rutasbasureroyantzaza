@@ -2922,6 +2922,500 @@ def create_app():
             return []
 
 
+
+    @app.route('/api/navigation/start-session', methods=['POST'])
+    @driver_required
+    def start_navigation_session():
+        """Iniciar sesión de navegación con configuración optimizada"""
+        try:
+            data = request.json
+            route_id = data.get('route_id')
+            vehicle_id = data.get('vehicle_id')
+            fuel_level = data.get('fuel_level')
+            
+            # Validaciones mejoradas
+            route = Route.query.get_or_404(route_id)
+            vehicle = Vehicle.query.get_or_404(vehicle_id)
+            
+            # Crear sesión de navegación
+            completion = RouteCompletion(
+                route_id=route.id,
+                driver_id=current_user.id,
+                vehicle_id=vehicle.id,
+                started_at=datetime.utcnow(),
+                status='in_progress',
+                fuel_start=fuel_level,
+                track_data=json.dumps([])  # Inicializar array vacío
+            )
+            
+            db.session.add(completion)
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'session_id': completion.id,
+                'route_data': {
+                    'name': route.name,
+                    'distance': route.distance,
+                    'estimated_time': route.estimated_time_saved_minutes or 0,
+                    'optimization_level': route.optimization_level or 'none'
+                },
+                'vehicle_data': {
+                    'brand': vehicle.brand,
+                    'model': vehicle.model,
+                    'plate': vehicle.plate_number
+                }
+            })
+            
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/navigation/update-position', methods=['POST'])
+    @driver_required
+    def update_navigation_position():
+        """Actualizar posición con optimización inteligente"""
+        try:
+            data = request.json
+            session_id = data.get('session_id')
+            position = data.get('position')
+            
+            completion = RouteCompletion.query.get_or_404(session_id)
+            
+            if completion.driver_id != current_user.id:
+                return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+            
+            # Cargar datos existentes
+            track_data = json.loads(completion.track_data) if completion.track_data else []
+            
+            # Validar posición
+            if not all(key in position for key in ['lat', 'lng', 'accuracy']):
+                return jsonify({'success': False, 'error': 'Invalid position data'}), 400
+            
+            # Filtro inteligente de posiciones
+            new_point = {
+                'lat': position['lat'],
+                'lng': position['lng'],
+                'accuracy': position['accuracy'],
+                'speed': position.get('speed', 0),
+                'heading': position.get('heading', 0),
+                'timestamp': datetime.utcnow().isoformat(),
+                'battery_level': position.get('battery_level', 100)
+            }
+            
+            # Solo agregar si la posición es significativamente diferente
+            should_add = True
+            if track_data:
+                last_point = track_data[-1]
+                distance = calculate_distance_meters(
+                    last_point['lat'], last_point['lng'],
+                    new_point['lat'], new_point['lng']
+                )
+                time_diff = (datetime.utcnow() - datetime.fromisoformat(last_point['timestamp'])).total_seconds()
+                
+                # No agregar si la distancia es muy pequeña y el tiempo muy corto
+                if distance < 5 and time_diff < 30:  # 5 metros en menos de 30 segundos
+                    should_add = False
+            
+            if should_add:
+                track_data.append(new_point)
+                completion.track_data = json.dumps(track_data)
+                db.session.commit()
+            
+            # Respuesta con datos contextuales
+            response_data = {
+                'success': True,
+    
+                'success': True,
+                'points_recorded': len(track_data),
+                'distance_traveled': calculate_route_distance(track_data),
+                'navigation_hints': generate_navigation_hints(new_point, completion.route)
+            }
+            
+            # Detectar si el conductor se está desviando significativamente
+            if completion.route.gpx_path:
+                deviation = check_route_deviation(new_point, completion.route)
+                if deviation > 200:  # 200 metros de desviación
+                    response_data['warning'] = {
+                        'type': 'route_deviation',
+                        'message': 'Te has desviado de la ruta planificada',
+                        'deviation_meters': deviation
+                    }
+            
+            return jsonify(response_data)
+            
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/navigation/smart-complete', methods=['POST'])
+    @driver_required
+    def smart_complete_route():
+        """Completar ruta con análisis inteligente"""
+        try:
+            data = request.json
+            session_id = data.get('session_id')
+            fuel_level = data.get('fuel_level')
+            notes = data.get('notes', '')
+            
+            completion = RouteCompletion.query.get_or_404(session_id)
+            
+            if completion.driver_id != current_user.id:
+                return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+            
+            # Análisis inteligente del recorrido
+            track_data = json.loads(completion.track_data) if completion.track_data else []
+            analysis = analyze_route_completion(track_data, completion.route)
+            
+            # Actualizar completion con datos analizados
+            completion.status = 'completed'
+            completion.completed_at = datetime.utcnow()
+            completion.fuel_end = fuel_level
+            completion.fuel_consumption = completion.fuel_start - fuel_level
+            completion.notes = notes
+            
+            # Agregar métricas del análisis
+            if analysis:
+                completion.notes += f"\n\nMétricas automáticas:\n"
+                completion.notes += f"- Distancia real: {analysis['actual_distance']:.2f} km\n"
+                completion.notes += f"- Velocidad promedio: {analysis['avg_speed']:.1f} km/h\n"
+                completion.notes += f"- Tiempo en movimiento: {analysis['moving_time']:.0f} min\n"
+                completion.notes += f"- Paradas detectadas: {analysis['stops_count']}\n"
+                completion.notes += f"- Eficiencia de ruta: {analysis['route_efficiency']:.1f}%"
+            
+            # Generar mapa mejorado
+            completion_map = generate_enhanced_completion_map(completion, analysis)
+            if completion_map:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                map_filename = f"completion_{completion.id}_{timestamp}.html"
+                map_filepath = os.path.join('static', 'completions', map_filename)
+                
+                os.makedirs(os.path.dirname(map_filepath), exist_ok=True)
+                completion_map.save(map_filepath)
+                completion.track_map_path = map_filepath
+            
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Ruta completada con análisis inteligente',
+                'analysis': analysis,
+                'completion_id': completion.id,
+                'has_map': completion.track_map_path is not None
+            })
+            
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    # Funciones auxiliares mejoradas
+
+    def calculate_distance_meters(lat1, lng1, lat2, lng2):
+        """Calcular distancia en metros entre dos puntos"""
+        from math import radians, cos, sin, asin, sqrt
+        
+        R = 6371000  # Radio de la Tierra en metros
+        lat1, lng1, lat2, lng2 = map(radians, [lat1, lng1, lat2, lng2])
+        
+        dlat = lat2 - lat1
+        dlng = lng2 - lng1
+        
+        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlng/2)**2
+        c = 2 * asin(sqrt(a))
+        
+        return R * c
+
+    def calculate_route_distance(track_points):
+        """Calcular distancia total del recorrido"""
+        if len(track_points) < 2:
+            return 0
+        
+        total_distance = 0
+        for i in range(1, len(track_points)):
+            prev_point = track_points[i-1]
+            curr_point = track_points[i]
+            
+            distance = calculate_distance_meters(
+                prev_point['lat'], prev_point['lng'],
+                curr_point['lat'], curr_point['lng']
+            )
+            
+            # Filtrar distancias irreales (más de 1km entre puntos)
+            if distance < 1000:
+                total_distance += distance
+        
+        return total_distance / 1000  # Retornar en kilómetros
+
+    def analyze_route_completion(track_points, route):
+        """Análisis inteligente del recorrido completado"""
+        if len(track_points) < 2:
+            return None
+        
+        try:
+            # Calcular métricas básicas
+            total_distance = calculate_route_distance(track_points)
+            
+            # Calcular tiempo total y en movimiento
+            start_time = datetime.fromisoformat(track_points[0]['timestamp'])
+            end_time = datetime.fromisoformat(track_points[-1]['timestamp'])
+            total_time = (end_time - start_time).total_seconds() / 60  # minutos
+            
+            # Detectar paradas (velocidad < 5 km/h por más de 2 minutos)
+            stops = detect_stops(track_points)
+            stop_time = sum(stop['duration'] for stop in stops)
+            moving_time = total_time - stop_time
+            
+            # Velocidad promedio
+            avg_speed = (total_distance / (moving_time / 60)) if moving_time > 0 else 0
+            
+            # Eficiencia de ruta (comparación con ruta planificada)
+            planned_distance = (route.distance / 1000) if route.distance else total_distance
+            route_efficiency = (planned_distance / total_distance * 100) if total_distance > 0 else 100
+            
+            # Detectar patrones de conducción
+            speed_analysis = analyze_speed_patterns(track_points)
+            
+            return {
+                'actual_distance': total_distance,
+                'planned_distance': planned_distance,
+                'total_time': total_time,
+                'moving_time': moving_time,
+                'stop_time': stop_time,
+                'avg_speed': avg_speed,
+                'max_speed': speed_analysis['max_speed'],
+                'stops_count': len(stops),
+                'stops_detail': stops,
+                'route_efficiency': min(100, route_efficiency),
+                'speed_violations': speed_analysis['violations'],
+                'smooth_driving_score': speed_analysis['smoothness_score']
+            }
+            
+        except Exception as e:
+            print(f"Error en análisis de ruta: {e}")
+            return None
+
+    def detect_stops(track_points):
+        """Detectar paradas durante el recorrido"""
+        stops = []
+        current_stop = None
+        
+        for i, point in enumerate(track_points):
+            speed_kmh = (point.get('speed', 0) or 0) * 3.6
+            
+            if speed_kmh < 5:  # Velocidad menor a 5 km/h
+                if current_stop is None:
+                    current_stop = {
+                        'start_index': i,
+                        'start_time': datetime.fromisoformat(point['timestamp']),
+                        'location': {'lat': point['lat'], 'lng': point['lng']}
+                    }
+            else:
+                if current_stop is not None:
+                    end_time = datetime.fromisoformat(track_points[i-1]['timestamp'])
+                    duration = (end_time - current_stop['start_time']).total_seconds() / 60
+                    
+                    # Solo considerar paradas de más de 2 minutos
+                    if duration >= 2:
+                        current_stop['end_time'] = end_time
+                        current_stop['duration'] = duration
+                        stops.append(current_stop)
+                    
+                    current_stop = None
+        
+        return stops
+
+    def analyze_speed_patterns(track_points):
+        """Analizar patrones de velocidad para calificación de conducción"""
+        speeds = []
+        accelerations = []
+        violations = []
+        
+        for i, point in enumerate(track_points):
+            speed_kmh = (point.get('speed', 0) or 0) * 3.6
+            speeds.append(speed_kmh)
+            
+            # Detectar violaciones de velocidad (ejemplo: >80 km/h en ciudad)
+            if speed_kmh > 80:
+                violations.append({
+                    'timestamp': point['timestamp'],
+                    'speed': speed_kmh,
+                    'location': {'lat': point['lat'], 'lng': point['lng']}
+                })
+            
+            # Calcular aceleración
+            if i > 0:
+                prev_speed = (track_points[i-1].get('speed', 0) or 0) * 3.6
+                time_diff = (datetime.fromisoformat(point['timestamp']) - 
+                            datetime.fromisoformat(track_points[i-1]['timestamp'])).total_seconds()
+                
+                if time_diff > 0:
+                    acceleration = (speed_kmh - prev_speed) / time_diff
+                    accelerations.append(acceleration)
+        
+        # Calcular suavidad de conducción
+        if accelerations:
+            # Penalizar aceleraciones/frenadas bruscas
+            harsh_events = len([a for a in accelerations if abs(a) > 2.0])  # >2 m/s²
+            smoothness_score = max(0, 100 - (harsh_events * 10))
+        else:
+            smoothness_score = 100
+        
+        return {
+            'max_speed': max(speeds) if speeds else 0,
+            'avg_speed': sum(speeds) / len(speeds) if speeds else 0,
+            'violations': violations,
+            'harsh_accelerations': len([a for a in accelerations if a > 2.0]),
+            'harsh_brakings': len([a for a in accelerations if a < -2.0]),
+            'smoothness_score': smoothness_score
+        }
+
+    def generate_navigation_hints(current_position, route):
+        """Generar sugerencias de navegación contextuales"""
+        hints = []
+        
+        # Verificar proximidad a puntos de interés conocidos
+        # (esto se puede expandir con una base de datos de POIs)
+        
+        # Sugerencia de velocidad basada en área
+        lat, lng = current_position['lat'], current_position['lng']
+        
+        # Ejemplo de zona urbana/rural (esto debería ser más sofisticado)
+        if -3.85 < lat < -3.80 and -78.80 < lng < -78.70:
+            hints.append({
+                'type': 'speed_suggestion',
+                'message': 'Zona urbana: velocidad recomendada 30-50 km/h'
+            })
+        
+        # Sugerencia de combustible
+        accuracy = current_position.get('accuracy', 100)
+        if accuracy > 50:
+            hints.append({
+                'type': 'gps_warning',
+                'message': 'Señal GPS débil, busca área abierta'
+            })
+        
+        return hints
+
+    def check_route_deviation(current_position, route):
+        """Verificar desviación de la ruta planificada"""
+        if not route.gpx_path or not os.path.exists(route.gpx_path):
+            return 0
+        
+        try:
+            from services.route_optimizer import AdvancedRouteOptimizer
+            optimizer = AdvancedRouteOptimizer()
+            route_points = optimizer.load_gpx_points(route.gpx_path)
+            
+            # Encontrar el punto más cercano en la ruta
+            min_distance = float('inf')
+            for route_point in route_points:
+                distance = calculate_distance_meters(
+                    current_position['lat'], current_position['lng'],
+                    route_point[0], route_point[1]
+                )
+                min_distance = min(min_distance, distance)
+            
+            return min_distance
+            
+        except Exception as e:
+            print(f"Error verificando desviación: {e}")
+            return 0
+
+    def generate_enhanced_completion_map(completion, analysis):
+        """Generar mapa mejorado con análisis de conducción"""
+        try:
+            import folium
+            from folium import plugins
+            
+            if not completion.track_data:
+                return None
+            
+            track_points = json.loads(completion.track_data)
+            if len(track_points) < 2:
+                return None
+            
+            # Crear mapa centrado
+            center_lat = sum(p['lat'] for p in track_points) / len(track_points)
+            center_lng = sum(p['lng'] for p in track_points) / len(track_points)
+            
+            completion_map = folium.Map(
+                location=[center_lat, center_lng],
+                zoom_start=14,
+                tiles='OpenStreetMap'
+            )
+            
+            # Ruta con colores basados en velocidad
+            coordinates = []
+            colors = []
+            
+            for point in track_points:
+                coordinates.append([point['lat'], point['lng']])
+                speed_kmh = (point.get('speed', 0) or 0) * 3.6
+                
+                # Color basado en velocidad
+                if speed_kmh < 10:
+                    colors.append('#dc3545')  # Rojo para paradas/lento
+                elif speed_kmh < 30:
+                    colors.append('#ffc107')  # Amarillo para velocidad moderada
+                elif speed_kmh < 60:
+                    colors.append('#28a745')  # Verde para velocidad normal
+                else:
+                    colors.append('#6610f2')  # Púrpura para velocidad alta
+            
+            # Agregar línea de ruta
+            folium.PolyLine(
+                locations=coordinates,
+                color='#007bff',
+                weight=4,
+                opacity=0.8
+            ).add_to(completion_map)
+            
+            # Marcadores de paradas si hay análisis
+            if analysis and 'stops_detail' in analysis:
+                for i, stop in enumerate(analysis['stops_detail']):
+                    folium.Marker(
+                        location=[stop['location']['lat'], stop['location']['lng']],
+                        popup=f'''
+                        <div style="min-width: 200px;">
+                            <h6>Parada #{i+1}</h6>
+                            <p><strong>Duración:</strong> {stop['duration']:.1f} minutos</p>
+                            <p><strong>Inicio:</strong> {stop['start_time'].strftime('%H:%M:%S')}</p>
+                        </div>
+                        ''',
+                        icon=folium.Icon(color='orange', icon='pause', prefix='fa')
+                    ).add_to(completion_map)
+            
+            # Información detallada en el mapa
+            if analysis:
+                info_html = f'''
+                <div style="position: fixed; top: 10px; right: 10px; width: 350px; 
+                            background-color: white; border:2px solid grey; z-index:9999; 
+                            font-size:14px; padding: 15px; border-radius: 10px;
+                            box-shadow: 0 0 20px rgba(0,0,0,0.3);">
+                    <h4>📊 Análisis Completo del Recorrido</h4>
+                    <hr>
+                    <p><strong>🚗 Conductor:</strong> {completion.driver.first_name} {completion.driver.last_name}</p>
+                    <p><strong>🚙 Vehículo:</strong> {completion.vehicle.brand} {completion.vehicle.model}</p>
+                    <p><strong>📅 Fecha:</strong> {completion.completed_at.strftime('%d/%m/%Y %H:%M')}</p>
+                    <hr>
+                    <p><strong>📏 Distancia real:</strong> {analysis['actual_distance']:.2f} km</p>
+                    <p><strong>⏱️ Tiempo total:</strong> {analysis['total_time']:.0f} min</p>
+                    <p><strong>🏃 Tiempo en movimiento:</strong> {analysis['moving_time']:.0f} min</p>
+                    <p><strong>🛑 Paradas:</strong> {analysis['stops_count']} ({analysis['stop_time']:.0f} min)</p>
+                    <p><strong>🚗 Velocidad promedio:</strong> {analysis['avg_speed']:.1f} km/h</p>
+                    <p><strong>🏎️ Velocidad máxima:</strong> {analysis['max_speed']:.1f} km/h</p>
+                    <p><strong>📈 Eficiencia de ruta:</strong> {analysis['route_efficiency']:.1f}%</p>
+                    <p><strong>🎯 Puntuación de conducción:</strong> {analysis['smooth_driving_score']:.0f}/100</p>
+                    <hr>
+                    <p><strong>⛽ Combustible:</strong> {completion.fuel_start}/4 → {completion.fuel_end}/4</p>
+                    <p><strong>📊 Consumo:</strong> {completion.fuel_consumption}/4 tanques</p>
+                </div>
+                '''
+                completion_map.get_root().html.add_child(folium.Element(info_html))
+            
+            return completion_map
+            
+        except Exception as e:
+            print(f"Error generando mapa mejorado: {e}")
+            return None
+
     
 
 
