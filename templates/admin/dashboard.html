@@ -1,0 +1,2348 @@
+{% extends "base.html" %}
+
+{% block title %}Panel de Administrador - Sistema de Optimización de Rutas{% endblock %}
+
+{% block page_title %}Panel de Administrador{% endblock %}
+
+{% block sidebar_items %}
+<li class="nav-item">
+    <a href="{{ url_for('admin_dashboard') }}" class="nav-link active">
+        <i class="fas fa-tachometer-alt me-2"></i> Dashboard
+    </a>
+</li>
+<li class="nav-item">
+    <a href="{{ url_for('manage_routes') }}" class="nav-link">
+        <i class="fas fa-route me-2"></i> Rutas
+    </a>
+</li>
+<li class="nav-item">
+    <a href="{{ url_for('manage_users') }}" class="nav-link">
+        <i class="fas fa-users me-2"></i> Usuarios
+    </a>
+</li>
+<li class="nav-item">
+    <a href="{{ url_for('manage_vehicles') }}" class="nav-link">
+        <i class="fas fa-truck me-2"></i> Vehículos
+    </a>
+</li>
+{% endblock %}
+
+{% block content %}
+<!-- Encabezado con botones de reporte -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-0 text-gray-800">Panel de Administrador</h1>
+        <p class="mb-0 text-muted">Sistema de Optimización de Rutas - Yantzaza</p>
+    </div>
+    <div class="btn-group" role="group">
+        <button type="button" class="btn btn-outline-primary" onclick="previewReport('admin')">
+            <i class="fas fa-eye me-2"></i>Vista Previa
+        </button>
+        <button type="button" class="btn btn-success" onclick="downloadReport('admin')">
+            <i class="fas fa-download me-2"></i>Descargar Reporte PDF
+        </button>
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="fas fa-ellipsis-v"></i>
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="refreshAllMetrics()">
+                        <i class="fas fa-sync-alt me-2"></i>Actualizar Métricas
+                    </a></li>
+                <li><a class="dropdown-item" href="#" onclick="resetMetrics()">
+                        <i class="fas fa-redo me-2"></i>Reset Sistema
+                    </a></li>
+                <li>
+                    <hr class="dropdown-divider">
+                </li>
+                <li><a class="dropdown-item" href="#" onclick="exportData()">
+                        <i class="fas fa-file-export me-2"></i>Exportar Datos
+                    </a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Alerta de estado del sistema -->
+<div id="systemStatusAlert" class="alert alert-info alert-dismissible fade show" role="alert" style="display: none;">
+    <i class="fas fa-info-circle me-2"></i>
+    <span id="systemStatusMessage"></span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+
+<!-- Métricas principales -->
+<div class="row">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Usuarios</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_users }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-users fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Rutas Totales</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_routes }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-route fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Choferes Activos</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_drivers }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-user-hard-hat fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Total Vehículos</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_vehicles }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-truck fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Métricas principales -->
+<div class="row">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Rutas Completadas</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ completed_routes }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">En Progreso</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ in_progress_routes }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-clock fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Total Rutas</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_routes }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-route fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Choferes Activos</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_drivers }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-user-hard-hat fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Panel principal con mapa -->
+<div class="row">
+    <!-- Mapa de Yantzaza -->
+    <div class="col-lg-8 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-map-marked-alt me-2"></i>Yantzaza - Veh√≠culos en Tiempo Real
+                </h6>
+                <div class="btn-group">
+                    <button id="refreshMapBtn" class="btn btn-sm btn-primary">
+                        <i class="fas fa-sync-alt"></i> Actualizar
+                    </button>
+                    <button id="centerMapBtn" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-crosshairs"></i> Centrar
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="realTimeMap" style="height: 400px; width: 100%; border-radius: 8px; overflow: hidden;"></div>
+                <div class="mt-3">
+                    <div class="row">
+                        <div class="col-md-3 text-center">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Veh√≠culos Activos
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="activeVehicles">0</div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">En Ruta</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="vehiclesInRoute">0</div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Disponibles</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="availableVehicles">{{ total_vehicles
+                                }}</div>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">√öltima
+                                Actualizaci√≥n</div>
+                            <div class="small text-gray-800" id="lastUpdate">--:--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-map-marked-alt"></i> Recorridos Completados con Mapas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Ruta</th>
+                                    <th>Conductor</th>
+                                    <th>Vehículo</th>
+                                    <th>Completado</th>
+                                    <th>Combustible</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for completion in recent_completions %}
+                                <tr>
+                                    <td>{{ completion.route.name }}</td>
+                                    <td>{{ completion.driver.first_name }} {{ completion.driver.last_name }}</td>
+                                    <td>{{ completion.vehicle.brand }} {{ completion.vehicle.model }}</td>
+                                    <td>{{ completion.completed_at|datetime_format('%d/%m/%Y %H:%M') }}</td>
+                                    <td>
+                                        <span
+                                            class="badge bg-{% if completion.fuel_consumption > 0 %}warning{% elif completion.fuel_consumption < 0 %}success{% else %}secondary{% endif %}">
+                                            {% if completion.fuel_consumption > 0 %}
+                                            -{{ completion.fuel_consumption }}/4
+                                            {% elif completion.fuel_consumption < 0 %} +{{
+                                                abs(completion.fuel_consumption) }}/4 {% else %} Sin cambio {% endif %}
+                                                </span>
+                                    </td>
+                                    <td>
+                                        {% if completion.track_data %}
+                                        <a href="{{ url_for('view_completion_map', completion_id=completion.id) }}"
+                                            class="btn btn-sm btn-primary">
+                                            <i class="fas fa-map"></i> Ver Recorrido
+                                        </a>
+                                        {% else %}
+                                        <span class="text-muted">Sin datos</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Panel de estad√≠sticas de combustible -->
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-gas-pump me-2"></i>Estad√≠sticas de Combustible
+                </h6>
+            </div>
+            <div class="card-body">
+                <!-- Consumo total del d√≠a -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-sm font-weight-bold">Consumo Hoy</span>
+                        <span class="text-sm font-weight-bold text-danger" id="todayFuelConsumption">0 L</span>
+                    </div>
+                    <div class="progress progress-sm mb-1">
+                        <div class="progress-bar bg-danger" role="progressbar" style="width: 0%" id="todayFuelBar">
+                        </div>
+                    </div>
+                    <small class="text-muted">Meta diaria: 25L</small>
+                </div>
+
+                <!-- Consumo del mes -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-sm font-weight-bold">Consumo Mensual</span>
+                        <span class="text-sm font-weight-bold text-warning" id="monthlyFuelConsumption">0 L</span>
+                    </div>
+                    <div class="progress progress-sm mb-1">
+                        <div class="progress-bar bg-warning" role="progressbar" style="width: 0%" id="monthlyFuelBar">
+                        </div>
+                    </div>
+                    <small class="text-muted">Meta mensual: 600L</small>
+                </div>
+
+                <!-- Eficiencia promedio -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-sm font-weight-bold">Eficiencia Promedio</span>
+                        <span class="text-sm font-weight-bold text-success" id="avgEfficiency">0 km/L</span>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Top consumidores -->
+                <h6 class="text-sm font-weight-bold mb-3">Mayor Consumo Hoy</h6>
+                <div id="topFuelConsumers">
+                    <div class="text-center text-muted">
+                        <small>Cargando datos...</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+<!-- Gráfico de tendencia de combustible -->
+<div class="row">
+    <div class="col-lg-12 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-chart-line me-2"></i>Tendencia de Consumo de Combustible
+                </h6>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-primary active" data-period="7">7 días</button>
+                    <button type="button" class="btn btn-outline-primary" data-period="30">30 días</button>
+                    <button type="button" class="btn btn-outline-primary" data-period="90">90 días</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="fuelTrendChart" width="400" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rutas recientes -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-history me-2"></i>Rutas Recientes
+                </h6>
+                <a href="{{ url_for('manage_routes') }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-route me-2"></i> Gestionar rutas
+                </a>
+            </div>
+            <div class="card-body">
+                {% if recent_routes %}
+                <div class="table-responsive">
+                    <table class="table table-bordered" id="recentRoutesTable">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Creador</th>
+                                <th>Distancia</th>
+                                <th>Optimización</th>
+                                <th>Ahorros</th>
+                                <th>Fecha creación</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for route in recent_routes %}
+                            <tr>
+                                <td>
+                                    <strong>{{ route.name }}</strong>
+                                    {% if route.optimization_level and route.optimization_level != 'none' %}
+                                    <br><small class="badge bg-success">Optimizada</small>
+                                    {% endif %}
+                                </td>
+                                <td>{{ route.creator.first_name + ' ' + route.creator.last_name if route.creator
+                                    else
+                                    'N/A' }}</td>
+                                <td>
+                                    {{ route.distance|distance_format if route.distance else 'N/A' }}
+                                    {% if route.original_distance and route.original_distance > route.distance %}
+                                    <br><small class="text-success">
+                                        Original: {{ route.original_distance|distance_format }}
+                                    </small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if route.optimization_level %}
+                                    <span
+                                        class="badge bg-{% if route.optimization_level == 'advanced' %}success{% elif route.optimization_level == 'medium' %}warning{% else %}secondary{% endif %}">
+                                        {{ route.optimization_level|format_optimization_level }}
+                                    </span>
+                                    {% if route.loops_removed %}
+                                    <br><small class="text-muted">{{ route.loops_removed }} bucles
+                                        eliminados</small>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="text-muted">Sin optimización</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if route.distance_saved_km and route.distance_saved_km > 0 %}
+                                    <div class="text-success">
+                                        <i class="fas fa-arrow-down"></i>
+                                        <strong>{{ route.distance_saved_km|round(2) }} km</strong>
+                                    </div>
+                                    <small class="text-muted">
+                                        {{ route.distance_saved_percent|round(1) }}% mejora
+                                    </small>
+                                    {% if route.estimated_time_saved_minutes %}
+                                    <br><small class="text-info">
+                                        <i class="fas fa-clock"></i>
+                                        ~{{ route.estimated_time_saved_minutes }} min
+                                    </small>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="text-muted">Sin ahorros</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ route.created_at|datetime_format }}</td>
+                                <td>
+                                    {% if route.active %}
+                                    <span class="badge bg-success">Activa</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Inactiva</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <a href="{{ url_for('admin_view_route', route_id=route.id) }}"
+                                            class="btn btn-info btn-sm" title="Ver ruta">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        {% if route.distance_saved_km and route.distance_saved_km > 0 %}
+                                        <a href="{{ url_for('view_route_optimization_details', route_id=route.id) }}"
+                                            class="btn btn-success btn-sm" title="Ver optimización">
+                                            <i class="fas fa-chart-line"></i>
+                                        </a>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <div class="mb-3">
+                        <i class="fas fa-route fa-3x text-muted"></i>
+                    </div>
+                    <p class="lead text-muted">No hay rutas registradas aún.</p>
+                    <a href="{{ url_for('create_route') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i> Crear primera ruta
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de vista previa -->
+<div class="modal fade" id="reportPreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-file-pdf me-2"></i>Vista Previa del Reporte
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="reportPreviewContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                        <p class="mt-2">Generando vista previa...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-success" id="downloadFromPreview">
+                    <i class="fas fa-download me-2"></i>Descargar PDF
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+<!-- MÉTRICAS DE OPTIMIZACIÓN AGREGADAS -->
+<div class="row">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Rutas Optimizadas
+                        </div>
+                        {% set optimized_routes = get_optimized_routes_count() %}
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ optimized_routes.count }}/{{ total_routes }}
+                        </div>
+                        <div class="text-xs text-gray-600">
+                            {{ optimized_routes.total_km_saved|round(1) }} km ahorrados en total
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-route fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Tiempo Ahorrado
+                        </div>
+                        {% set optimization_summary = get_optimization_summary() %}
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {% if optimization_summary.total_time_saved_minutes < 60 %} {{
+                                optimization_summary.total_time_saved_minutes }} min {% else %} {{
+                                (optimization_summary.total_time_saved_minutes // 60) }}h {{
+                                (optimization_summary.total_time_saved_minutes % 60) }}m {% endif %} </div>
+                                <div class="text-xs text-gray-600">
+                                    Total estimado ahorrado
+                                </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-clock fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Combustible Ahorrado
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ optimization_summary.total_fuel_saved_liters }} L
+                            </div>
+                            <div class="text-xs text-gray-600">
+                                Estimado por optimizaciones
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-gas-pump fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Mejora Promedio
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ optimization_summary.average_improvement_percent }}%
+                            </div>
+                            <div class="text-xs text-gray-600">
+                                {% if optimization_summary.best_optimization %}
+                                Mejor: {{ optimization_summary.best_optimization.improvement }}%
+                                {% else %}
+                                Sin datos
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-chart-line fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel principal con mapa -->
+    <div class="row">
+        <!-- Mapa de Yantzaza -->
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-map-marked-alt me-2"></i>Yantzaza - Vehículos en Tiempo Real
+                    </h6>
+                    <div class="btn-group">
+                        <button id="refreshMapBtn" class="btn btn-sm btn-primary">
+                            <i class="fas fa-sync-alt"></i> Actualizar
+                        </button>
+                        <button id="centerMapBtn" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-crosshairs"></i> Centrar
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="realTimeMap" style="height: 400px; width: 100%; border-radius: 8px; overflow: hidden;">
+                    </div>
+                    <div class="mt-3">
+                        <div class="row">
+                            <div class="col-md-3 text-center">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Vehículos
+                                    Activos
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="activeVehicles">0</div>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">En Ruta</div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="vehiclesInRoute">0</div>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Disponibles
+                                </div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="availableVehicles">{{
+                                    total_vehicles
+                                    }}</div>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <div class="text-xs font-weight-bold text-secondary text-uppercase mb-1">Última
+                                    Actualización</div>
+                                <div class="small text-gray-800" id="lastUpdate">--:--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel de estadísticas de combustible -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-gas-pump me-2"></i>Estadísticas de Combustible
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <!-- Consumo total del día -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-sm font-weight-bold">Consumo Hoy</span>
+                            <span class="text-sm font-weight-bold text-danger" id="todayFuelConsumption">0 L</span>
+                        </div>
+                        <div class="progress progress-sm mb-1">
+                            <div class="progress-bar bg-danger" role="progressbar" style="width: 0%" id="todayFuelBar">
+                            </div>
+                        </div>
+                        <small class="text-muted">Meta diaria: 25L</small>
+                    </div>
+
+                    <!-- Consumo del mes -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-sm font-weight-bold">Consumo Mensual</span>
+                            <span class="text-sm font-weight-bold text-warning" id="monthlyFuelConsumption">0
+                                L</span>
+                        </div>
+                        <div class="progress progress-sm mb-1">
+                            <div class="progress-bar bg-warning" role="progressbar" style="width: 0%"
+                                id="monthlyFuelBar">
+                            </div>
+                        </div>
+                        <small class="text-muted">Meta mensual: 600L</small>
+                    </div>
+
+                    <!-- Eficiencia promedio -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-sm font-weight-bold">Eficiencia Promedio</span>
+                            <span class="text-sm font-weight-bold text-success" id="avgEfficiency">0 km/L</span>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <!-- Top consumidores -->
+                    <h6 class="text-sm font-weight-bold mb-3">Mayor Consumo Hoy</h6>
+                    <div id="topFuelConsumers">
+                        <div class="text-center text-muted">
+                            <small>Cargando datos...</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANEL DE OPTIMIZACIONES RECIENTES AGREGADO -->
+    <div class="row">
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-success">
+                        <i class="fas fa-chart-line me-2"></i>Mejores Optimizaciones
+                    </h6>
+                    <a href="{{ url_for('optimization_dashboard') }}" class="btn btn-success btn-sm">
+                        <i class="fas fa-eye"></i> Ver Dashboard
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% set top_optimized = optimized_routes.routes[:5] %}
+                    {% if top_optimized %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Ruta</th>
+                                    <th>Ahorro</th>
+                                    <th>Mejora</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for route in top_optimized %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ route.name|truncate(20) }}</strong>
+                                        <br><small class="text-muted">{{
+                                            route.optimization_level|format_optimization_level }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-success">{{ route.distance_saved_km|round(1) }}
+                                            km</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary">{{ route.distance_saved_percent|round(1)
+                                            }}%</span>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('view_route_optimization_details', route_id=route.id) }}"
+                                            class="btn btn-sm btn-outline-info">
+                                            <i class="fas fa-chart-bar"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-3">
+                        <i class="fas fa-chart-line fa-2x mb-2"></i>
+                        <p>No hay rutas optimizadas disponibles</p>
+                        <a href="{{ url_for('create_route') }}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-plus"></i> Crear ruta optimizada
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- IMPACTO ECONÓMICO AGREGADO -->
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3 bg-success text-white">
+                    <h6 class="m-0 font-weight-bold">
+                        <i class="fas fa-dollar-sign me-2"></i>Impacto Económico Mensual
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% set monthly_fuel_savings = optimization_summary.total_fuel_saved_liters * 1.2 %}
+                    {% set monthly_time_value = (optimization_summary.total_time_saved_minutes / 60) * 20 %}
+                    {% set monthly_maintenance = optimization_summary.total_km_saved * 0.5 %}
+                    {% set total_monthly = monthly_fuel_savings + monthly_time_value + monthly_maintenance %}
+
+                    <div class="mb-3 text-center">
+                        <h4 class="text-success mb-1">${{ total_monthly|round(2) }}</h4>
+                        <small class="text-muted">Ahorro estimado mensual</small>
+                    </div>
+
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <div class="border rounded p-2">
+                                <i class="fas fa-gas-pump text-warning fa-lg mb-1"></i>
+                                <div class="small">
+                                    <strong>${{ monthly_fuel_savings|round(1) }}</strong>
+                                    <br><span class="text-muted">Combustible</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="border rounded p-2">
+                                <i class="fas fa-clock text-info fa-lg mb-1"></i>
+                                <div class="small">
+                                    <strong>${{ monthly_time_value|round(1) }}</strong>
+                                    <br><span class="text-muted">Tiempo</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="border rounded p-2">
+                                <i class="fas fa-wrench text-secondary fa-lg mb-1"></i>
+                                <div class="small">
+                                    <strong>${{ monthly_maintenance|round(1) }}</strong>
+                                    <br><span class="text-muted">Mantenimiento</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <div class="text-center">
+                        <small class="text-muted">Proyección anual: <strong class="text-success">${{ (total_monthly
+                                *
+                                12)|round(0) }}</strong></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recorridos completados recientes -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header">
+                    <h5><i class="fas fa-route"></i> Recorridos Completados Recientes</h5>
+                </div>
+                <div class="card-body">
+                    {% set recent_completions = get_recent_completions() %}
+                    {% if recent_completions %}
+                    <div class="list-group list-group-flush">
+                        {% for completion in recent_completions[:5] %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ completion.route.name }}</strong><br>
+                                <small class="text-muted">
+                                    {{ completion.driver.first_name }} {{ completion.driver.last_name }} -
+                                    {{ completion.completed_at|datetime_format('%d/%m/%Y %H:%M') }}
+                                </small>
+                            </div>
+                            <div>
+                                {% if completion.track_data %}
+                                <a href="{{ url_for('view_completion_map', completion_id=completion.id) }}"
+                                    class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-map"></i>
+                                </a>
+                                {% endif %}
+                                <span class="badge bg-success">Completado</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted">No hay recorridos completados recientes.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Estado del sistema -->
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header">
+                    <h5><i class="fas fa-server"></i> Estado del Sistema</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>Estado de métricas</span>
+                            <span class="badge bg-success" id="metricsStatus">Normal</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>Actualizaciones</span>
+                            <span class="badge bg-info" id="updateStatus">Activas</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>Última actualización</span>
+                            <small class="text-muted" id="lastMetricsUpdate">--:--</small>
+                        </div>
+                    </div>
+                    <!-- INFORMACIÓN DE OPTIMIZACIÓN AGREGADA -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>Rutas optimizadas</span>
+                            <span class="badge bg-success">{{ optimized_routes.count }}</span>
+                        </div>
+                    </div>
+                    <hr>
+                    <button class="btn btn-sm btn-outline-info me-2" onclick="debugMetrics()">
+                        <i class="fas fa-bug"></i> Debug Info
+                    </button>
+                    {% if optimization_summary.total_routes_optimized > 0 %}
+                    <a href="{{ url_for('optimization_dashboard') }}" class="btn btn-sm btn-success">
+                        <i class="fas fa-chart-line"></i> Optimización
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Métricas detalladas de combustible -->
+    <div class="row">
+        <!-- Consumo por vehículo -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-truck me-2"></i>Consumo por Vehículo
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="vehicleFuelChart" width="400" height="300"></canvas>
+                    <div class="mt-3">
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Vehículo</th>
+                                        <th>Consumo</th>
+                                        <th>Rutas</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vehicleFuelTable">
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">
+                                            <small>Cargando datos...</small>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Consumo por chofer -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-user-hard-hat me-2"></i>Consumo por Chofer
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="driverFuelChart" width="400" height="300"></canvas>
+                    <div class="mt-3">
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Chofer</th>
+                                        <th>Consumo</th>
+                                        <th>Eficiencia</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="driverFuelTable">
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">
+                                            <small>Cargando datos...</small>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Consumo por ruta -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-route me-2"></i>Consumo por Ruta
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="routeFuelChart" width="400" height="300"></canvas>
+                    <div class="mt-3">
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Ruta</th>
+                                        <th>Consumo Prom.</th>
+                                        <th>Completadas</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="routeFuelTable">
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">
+                                            <small>Cargando datos...</small>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% block extra_css %}
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        .border-left-primary {
+            border-left: 0.25rem solid #4e73df !important;
+        }
+
+        .border-left-success {
+            border-left: 0.25rem solid #1cc88a !important;
+        }
+
+        .border-left-warning {
+            border-left: 0.25rem solid #f6c23e !important;
+        }
+
+        .border-left-info {
+            border-left: 0.25rem solid #36b9cc !important;
+        }
+
+        .text-gray-800 {
+            color: #5a5c69 !important;
+        }
+
+        .text-gray-300 {
+            color: #dddfeb !important;
+        }
+
+        .text-xs {
+            font-size: 0.7rem;
+        }
+
+        .text-sm {
+            font-size: 0.875rem;
+        }
+
+        .progress-sm {
+            height: 0.5rem;
+        }
+
+        .border-right {
+            border-right: 1px solid #e3e6f0 !important;
+        }
+
+        /* Estilos para el mapa */
+        .leaflet-container {
+            font-family: inherit;
+        }
+
+        .vehicle-marker {
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .marker-active {
+            background-color: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        .marker-idle {
+            background-color: #ffc107;
+        }
+
+        .marker-offline {
+            background-color: #6c757d;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: scale(1.1);
+                opacity: 0.7;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .yantzaza-marker {
+            background-color: #dc3545;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Estilos para métricas de combustible */
+        .fuel-consumer-item {
+            padding: 8px 12px;
+            margin: 4px 0;
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            border-left: 3px solid #dc3545;
+        }
+
+        .fuel-consumer-item.efficient {
+            border-left-color: #28a745;
+        }
+
+        .fuel-consumer-item.moderate {
+            border-left-color: #ffc107;
+        }
+
+        /* Estilos para alertas de sistema */
+        .system-warning {
+            animation: blink 1.5s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            50% {
+                opacity: 1;
+            }
+
+            51%,
+            100% {
+                opacity: 0.5;
+            }
+        }
+    </style>
+    {% endblock %}
+
+    {% block extra_js %}
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        // Variables globales para el dashboard
+        let map;
+        let vehicleMarkers = [];
+        let yantzazaMarker;
+
+        // Charts
+        let vehicleFuelChart, driverFuelChart, routeFuelChart, fuelTrendChart;
+        let currentReportType = null;
+
+        // Variables de control para evitar métricas infinitas
+        let isUpdating = false;
+        let updateCounter = 0;
+        const MAX_RETRIES = 3;
+
+        // Coordenadas de Yantzaza
+        const YANTZAZA_COORDS = [-3.8167, -78.7500];
+
+        // Función de utilidad para mostrar alertas
+        function showAlert(message, type = 'info', duration = 3000) {
+            const alertClass = `alert-${type}`;
+            const alertHtml = `
+                <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'danger' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+
+            const existingAlert = $('.alert:first');
+            if (existingAlert.length) {
+                existingAlert.replaceWith(alertHtml);
+            } else {
+                $('#systemStatusAlert').parent().prepend(alertHtml);
+            }
+
+            if (duration > 0) {
+                setTimeout(() => {
+                    $('.alert').alert('close');
+                }, duration);
+            }
+        }
+
+        // Función de utilidad para actualizar estado del sistema
+        function updateSystemStatus(status, message) {
+            $('#metricsStatus').removeClass('bg-success bg-warning bg-danger').addClass(`bg-${status}`);
+            $('#metricsStatus').text(message);
+            $('#lastMetricsUpdate').text(new Date().toLocaleTimeString());
+        }
+
+        $(document).ready(function () {
+            console.log('Inicializando dashboard admin con métricas de optimización...');
+
+            // Inicializar DataTables
+            if ($('#recentRoutesTable').length) {
+                $('#recentRoutesTable').DataTable({
+                    language: window.dataTablesSpanish,
+                    order: [[5, 'desc']], // Ordenar por fecha de creación
+                    pageLength: 5,
+                    columnDefs: [{ orderable: false, targets: [7] }] // Columna de acciones no ordenable
+                });
+            }
+
+            // Inicializar mapa
+            initializeYantzazaMap();
+
+            // Cargar métricas inicial (solo una vez)
+            loadFuelMetrics();
+
+            // Actualizar vehículos inicial
+            updateVehiclePositions();
+
+            // Configurar intervalos con control
+            const vehicleInterval = setInterval(() => {
+                if (!isUpdating) {
+                    updateVehiclePositions();
+                }
+            }, 30000);
+
+            const metricsInterval = setInterval(() => {
+                if (!isUpdating && updateCounter < MAX_RETRIES) {
+                    loadFuelMetrics();
+                } else if (updateCounter >= MAX_RETRIES) {
+                    updateSystemStatus('warning', 'Limitado');
+                    console.warn('Actualizaciones automáticas pausadas por límite de reintentos');
+                }
+            }, 300000);
+
+            // Guardar referencias para poder limpiar después
+            window.dashboardIntervals = {
+                vehicles: vehicleInterval,
+                metrics: metricsInterval
+            };
+
+            // Eventos de botones
+            $('#refreshMapBtn').click(function () {
+                const $btn = $(this);
+                const $icon = $btn.find('i');
+
+                if ($icon.hasClass('fa-spin')) return; // Evitar clicks múltiples
+
+                $icon.addClass('fa-spin');
+                updateVehiclePositions();
+
+                setTimeout(() => {
+                    $icon.removeClass('fa-spin');
+                }, 2000);
+            });
+
+            $('#centerMapBtn').click(centerMapOnYantzaza);
+
+            // Botones de período para gráfico de tendencia
+            $('[data-period]').click(function () {
+                const $this = $(this);
+                if ($this.hasClass('active')) return; // Ya está activo
+
+                $('[data-period]').removeClass('active');
+                $this.addClass('active');
+
+                const period = $this.data('period');
+                loadFuelTrendData(period);
+            });
+
+            // Actualizar estado inicial
+            updateSystemStatus('success', 'Normal');
+            updateUpdateStatus();
+        });
+
+        // Función para inicializar el mapa de Yantzaza
+        function initializeYantzazaMap() {
+            map = L.map('realTimeMap').setView(YANTZAZA_COORDS, 14);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            const yantzazaIcon = L.divIcon({
+                html: '<div class="yantzaza-marker" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;"><i class="fas fa-city" style="color: white; font-size: 12px;"></i></div>',
+                iconSize: [24, 24],
+                className: 'yantzaza-city-marker'
+            });
+
+            yantzazaMarker = L.marker(YANTZAZA_COORDS, { icon: yantzazaIcon })
+                .bindPopup('<div class="text-center"><strong style="color: #dc3545;">Yantzaza</strong><br><small>Zamora Chinchipe, Ecuador</small><br><small>Centro de operaciones</small></div>')
+                .addTo(map);
+
+            L.circle(YANTZAZA_COORDS, {
+                color: '#007bff',
+                fillColor: '#007bff',
+                fillOpacity: 0.1,
+                radius: 5000
+            }).addTo(map).bindPopup('Área de cobertura principal (5km)');
+        }
+
+        function centerMapOnYantzaza() {
+            if (map) {
+                map.setView(YANTZAZA_COORDS, 14);
+                if (yantzazaMarker) yantzazaMarker.openPopup();
+            }
+        }
+
+        function updateVehiclePositions() {
+            $.get('/api/vehicles/active-positions')
+                .done(function (data) {
+                    updateVehicleMarkers(data);
+                })
+                .fail(function () {
+                    console.log('No hay vehículos activos o error en la API');
+                    updateVehicleStats(0, 0);
+                });
+
+            const now = new Date();
+            $('#lastUpdate').text(now.toLocaleTimeString());
+        }
+
+        function updateVehicleMarkers(vehicles) {
+            // Limpiar markers existentes
+            vehicleMarkers.forEach(marker => map.removeLayer(marker));
+            vehicleMarkers = [];
+
+            let activeCount = 0, inRouteCount = 0;
+
+            if (vehicles && Array.isArray(vehicles)) {
+                vehicles.forEach(vehicle => {
+                    let markerClass = 'marker-offline', iconColor = '#6c757d', statusText = 'Desconectado';
+
+                    if (vehicle.status === 'active') {
+                        markerClass = 'marker-active'; iconColor = '#28a745'; statusText = 'En ruta';
+                        activeCount++; inRouteCount++;
+                    } else if (vehicle.status === 'idle') {
+                        markerClass = 'marker-idle'; iconColor = '#ffc107'; statusText = 'En espera';
+                        activeCount++;
+                    }
+
+                    const vehicleIcon = L.divIcon({
+                        html: `<div class="vehicle-marker ${markerClass}" style="width: 20px; height: 20px; background-color: ${iconColor}; display: flex; align-items: center; justify-content: center;">
+                              <i class="fas fa-truck" style="color: white; font-size: 10px;"></i>
+                           </div>`,
+                        iconSize: [20, 20],
+                        className: 'custom-vehicle-marker'
+                    });
+
+                    const marker = L.marker([vehicle.lat, vehicle.lng], { icon: vehicleIcon })
+                        .bindPopup(`<div style="text-align: center;">
+                        <strong>${vehicle.vehicle_name}</strong><br><code>${vehicle.plate}</code><br>
+                        <small><strong>Chofer:</strong> ${vehicle.driver_name}</small><br>
+                        <small><strong>Ruta:</strong> ${vehicle.route_name}</small><br>
+                        <small><strong>Estado:</strong> <span style="color: ${iconColor};">${statusText}</span></small><br>
+                        <small><strong>Combustible:</strong> ${vehicle.fuel_level}/4</small><br>
+                        <small><strong>Iniciado:</strong> ${new Date(vehicle.started_at).toLocaleTimeString()}</small>
+                    </div>`);
+
+                    marker.addTo(map);
+                    vehicleMarkers.push(marker);
+                });
+            }
+
+            updateVehicleStats(activeCount, inRouteCount);
+        }
+
+        function updateVehicleStats(activeCount, inRouteCount) {
+            const totalVehicles = {{ total_vehicles|default (0)
+        }};
+        const availableCount = totalVehicles - inRouteCount;
+
+        $('#activeVehicles').text(activeCount);
+        $('#vehiclesInRoute').text(inRouteCount);
+        $('#availableVehicles').text(availableCount);
+            }
+
+        // Resto de las funciones JavaScript se mantienen igual...
+        // (loadFuelMetrics, createVehicleFuelChart, etc.)
+
+        // Handler para descargar desde el modal de preview
+        $('#downloadFromPreview').click(function () {
+            if (currentReportType) {
+                $('#reportPreviewModal').modal('hide');
+                downloadReport(currentReportType);
+            }
+        });
+
+        // Limpiar datos cuando se cierre el modal
+        $('#reportPreviewModal').on('hidden.bs.modal', function () {
+            currentReportType = null;
+        });
+
+
+
+        function loadFuelMetrics() {
+            if (isUpdating) {
+                console.log('Actualización en progreso, saltando...');
+                return;
+            }
+
+            isUpdating = true;
+            updateCounter++;
+
+            console.log(`Cargando métricas de combustible - Intento ${updateCounter}`);
+            updateSystemStatus('warning', 'Actualizando');
+
+            // Cargar resumen de combustible simulado (reemplazar con API real)
+            const simulatedFuelData = {
+                today: Math.random() * 15 + 5,
+                monthly: Math.random() * 400 + 200,
+                avg_efficiency: Math.random() * 5 + 8,
+                total_routes_today: Math.floor(Math.random() * 10) + 1
+            };
+            updateFuelSummary(simulatedFuelData);
+
+            // Cargar datos por vehículo simulados
+            const vehicleData = generateSimulatedVehicleData();
+            createVehicleFuelChart(vehicleData);
+
+            // Cargar datos por chofer simulados
+            const driverData = generateSimulatedDriverData();
+            createDriverFuelChart(driverData);
+
+            // Cargar datos por ruta simulados
+            const routeData = generateSimulatedRouteData();
+            createRouteFuelChart(routeData);
+
+            // Cargar tendencia (7 días por defecto)
+            loadFuelTrendData(7);
+
+            // Resetear flag y actualizar estado después de un tiempo
+            setTimeout(() => {
+                isUpdating = false;
+                updateSystemStatus('success', 'Normal');
+                updateUpdateStatus();
+            }, 3000);
+        }
+
+        function generateSimulatedVehicleData() {
+            const vehicles = ['ABC-123', 'DEF-456', 'GHI-789', 'JKL-012'];
+            return vehicles.map(plate => ({
+                plate: plate,
+                consumption: Math.random() * 20 + 10,
+                routes: Math.floor(Math.random() * 8) + 2,
+                efficiency: Math.random() * 3 + 8
+            }));
+        }
+
+        function generateSimulatedDriverData() {
+            const drivers = ['Juan Pérez', 'María García', 'Carlos López', 'Ana Torres'];
+            return drivers.map(driver => ({
+                driver: driver,
+                consumption: Math.random() * 25 + 15,
+                routes: Math.floor(Math.random() * 10) + 3,
+                efficiency: Math.random() * 4 + 7,
+                score: Math.floor(Math.random() * 30) + 70
+            }));
+        }
+
+        function generateSimulatedRouteData() {
+            const routes = ['Ruta Centro', 'Ruta Norte', 'Ruta Sur', 'Ruta Industrial'];
+            return routes.map(route => ({
+                route: route,
+                avg_consumption: Math.random() * 15 + 8,
+                completions: Math.floor(Math.random() * 15) + 5,
+                distance: Math.random() * 20 + 10
+            }));
+        }
+
+        function updateFuelSummary(data) {
+            try {
+                if (!data || typeof data !== 'object') {
+                    console.error('Datos de resumen inválidos:', data);
+                    return;
+                }
+
+                const todayConsumption = parseFloat(data.today) || 0;
+                const monthlyConsumption = parseFloat(data.monthly) || 0;
+                const avgEfficiency = parseFloat(data.avg_efficiency) || 0;
+
+                const todayPercent = Math.min(Math.max((todayConsumption / 25) * 100, 0), 100);
+                const monthlyPercent = Math.min(Math.max((monthlyConsumption / 600) * 100, 0), 100);
+
+                $('#todayFuelConsumption').text(`${todayConsumption.toFixed(1)} L`);
+                $('#todayFuelBar').css('width', todayPercent + '%');
+
+                $('#monthlyFuelConsumption').text(`${monthlyConsumption.toFixed(1)} L`);
+                $('#monthlyFuelBar').css('width', monthlyPercent + '%');
+
+                $('#avgEfficiency').text(`${avgEfficiency.toFixed(1)} km/L`);
+
+                updateTopConsumers(data);
+
+            } catch (error) {
+                console.error('Error actualizando resumen de combustible:', error);
+            }
+        }
+
+
+
+        function updateTopConsumers(data) {
+            let consumersHtml = '';
+
+            try {
+                const totalRoutesToday = parseInt(data.total_routes_today) || 0;
+
+                if (totalRoutesToday > 0 && data.today > 0) {
+                    const baseConsumption = parseFloat(data.today) || 0;
+                    const simulatedConsumers = [
+                        {
+                            name: 'ABC-1234',
+                            consumption: Math.max((baseConsumption * 0.4).toFixed(1), 0),
+                            type: 'high'
+                        },
+                        {
+                            name: 'DEF-5678',
+                            consumption: Math.max((baseConsumption * 0.35).toFixed(1), 0),
+                            type: 'moderate'
+                        },
+                        {
+                            name: 'GHI-9012',
+                            consumption: Math.max((baseConsumption * 0.25).toFixed(1), 0),
+                            type: 'efficient'
+                        }
+                    ];
+
+                    simulatedConsumers.forEach(consumer => {
+                        const badgeClass = consumer.type === 'high' ? 'bg-danger' :
+                            consumer.type === 'moderate' ? 'bg-warning' : 'bg-success';
+
+                        consumersHtml += `
+                    <div class="fuel-consumer-item ${consumer.type}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <small class="font-weight-bold">${consumer.name}</small>
+                            </div>
+                            <span class="badge ${badgeClass}">${consumer.consumption} L</span>
+                        </div>
+                    </div>
+                `;
+                    });
+                } else {
+                    consumersHtml = '<div class="text-center text-muted"><small>No hay consumo registrado hoy</small></div>';
+                }
+            } catch (error) {
+                console.error('Error generando top consumidores:', error);
+                consumersHtml = '<div class="text-center text-danger"><small>Error cargando datos</small></div>';
+            }
+
+            $('#topFuelConsumers').html(consumersHtml);
+        }
+
+        function createVehicleFuelChart(data) {
+            const ctx = document.getElementById('vehicleFuelChart');
+            if (!ctx) return;
+
+            try {
+                if (vehicleFuelChart) {
+                    vehicleFuelChart.destroy();
+                    vehicleFuelChart = null;
+                }
+
+                if (data && Array.isArray(data) && data.length > 0) {
+                    const cleanData = data.slice(0, 10).map(v => ({
+                        plate: String(v.plate || 'N/A'),
+                        consumption: Math.max(parseFloat(v.consumption) || 0, 0),
+                        routes: Math.max(parseInt(v.routes) || 0, 0)
+                    }));
+
+                    vehicleFuelChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: cleanData.map(v => v.plate),
+                            datasets: [{
+                                data: cleanData.map(v => v.consumption),
+                                backgroundColor: ['#dc3545', '#ffc107', '#28a745', '#17a2b8', '#6f42c1'],
+                                borderWidth: 2,
+                                borderColor: '#fff'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom' }
+                            }
+                        }
+                    });
+
+                    updateVehicleFuelTable(cleanData);
+                } else {
+                    updateVehicleFuelTable([]);
+                }
+            } catch (error) {
+                console.error('Error creando gráfico de vehículos:', error);
+                updateVehicleFuelTable([]);
+            }
+        }
+
+        function updateVehicleFuelTable(data) {
+            let tableHtml = '';
+
+            if (data && data.length > 0) {
+                data.forEach(vehicle => {
+                    tableHtml += `
+                <tr>
+                    <td><code>${vehicle.plate}</code></td>
+                    <td><span class="badge bg-secondary">${route.completions}</span></td>
+                </tr>
+            `;
+                });
+            } else {
+                tableHtml = '<tr><td colspan="3" class="text-center text-muted">No hay datos disponibles</td></tr>';
+            }
+
+            $('#routeFuelTable').html(tableHtml);
+        }
+
+
+
+        function loadFuelTrendData(days) {
+            // Generar datos simulados para la tendencia
+            const dates = Array.from({ length: days }, (_, i) => {
+                const date = new Date();
+                date.setDate(date.getDate() - (days - 1 - i));
+                return date.toISOString().split('T')[0];
+            });
+
+            const consumption = Array.from({ length: days }, () => Math.floor(Math.random() * 15) + 5);
+            const routes = Array.from({ length: days }, () => Math.floor(Math.random() * 8) + 2);
+
+            const trendData = {
+                dates: dates,
+                consumption: consumption,
+                routes: routes
+            };
+
+            createFuelTrendChart(trendData, days);
+        }
+
+
+        function createFuelTrendChart(data, days) {
+            try {
+                if (fuelTrendChart) {
+                    fuelTrendChart.destroy();
+                    fuelTrendChart = null;
+                }
+
+                const ctx = document.getElementById('fuelTrendChart');
+                if (!ctx) return;
+
+                fuelTrendChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.dates.map(date => new Date(date).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })),
+                        datasets: [
+                            {
+                                label: 'Consumo Diario (L)',
+                                data: data.consumption,
+                                borderColor: '#dc3545',
+                                backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            },
+                            {
+                                label: 'Rutas Completadas',
+                                data: data.routes,
+                                borderColor: '#28a745',
+                                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                tension: 0.4,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: { display: true, text: 'Litros consumidos' }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: { display: true, text: 'Rutas completadas' },
+                                grid: { drawOnChartArea: false }
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: `Tendencia de los últimos ${days} días`
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error creando gráfico de tendencia:', error);
+            }
+        }
+
+
+        function updateUpdateStatus() {
+            const statusText = updateCounter < MAX_RETRIES ? 'Activas' : 'Pausadas';
+            const statusClass = updateCounter < MAX_RETRIES ? 'bg-info' : 'bg-warning';
+            $('#updateStatus').removeClass('bg-info bg-warning bg-danger').addClass(statusClass).text(statusText);
+        }
+        function previewReport(reportType) {
+            currentReportType = reportType;
+
+            $('#reportPreviewModal').modal('show');
+            $('#reportPreviewContent').html(`
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p class="mt-2">Generando vista previa...</p>
+                </div>
+                `);
+
+            $.get(`/api/report/preview/${reportType}`)
+                .done(function (data) {
+                    renderReportPreview(data);
+                })
+                .fail(function (xhr) {
+                    let errorMsg = 'Error al cargar vista previa';
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        errorMsg = response.error || errorMsg;
+                    } catch (e) {
+                        console.error('Error parsing response:', e);
+                    }
+
+                    $('#reportPreviewContent').html(`
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    ${errorMsg}
+                </div>
+            `);
+                });
+        }
+
+        function renderReportPreview(data) {
+            const content = `
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    Información del Reporte
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <strong>Tipo:</strong> ${data.report_type === 'admin' ? 'Administrativo Completo' : 'Coordinación'}<br>
+                                        <strong>Generado por:</strong> ${data.user}<br>
+                                        <strong>Fecha:</strong> ${new Date(data.generated_at).toLocaleString()}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <strong>Período:</strong> Últimos 30 días<br>
+                                        <strong>Total Rutas:</strong> ${data.summary ? data.summary.total_routes : 'N/A'}<br>
+                                        <strong>Rutas Optimizadas:</strong> ${data.optimization ? data.optimization.total_routes_optimized : 0}
+                                    </div>
+                                </div>
+                                ${data.optimization && data.optimization.total_routes_optimized > 0 ? `
+                                    <hr>
+                                    <div class="row">
+                                        <div class="col-md-3 text-center">
+                                            <h6 class="text-success">${data.optimization.total_km_saved} km</h6>
+                                            <small>Ahorrados</small>
+                                        </div>
+                                        <div class="col-md-3 text-center">
+                                            <h6 class="text-info">${data.optimization.total_time_saved_minutes} min</h6>
+                                            <small>Tiempo ahorrado</small>
+                                        </div>
+                                        <div class="col-md-3 text-center">
+                                            <h6 class="text-warning">${data.optimization.total_fuel_saved_liters} L</h6>
+                                            <small>Combustible ahorrado</small>
+                                        </div>
+                                        <div class="col-md-3 text-center">
+                                            <h6 class="text-primary">${data.optimization.average_improvement_percent}%</h6>
+                                            <small>Mejora promedio</small>
+                                        </div>
+                                    </div>
+                                ` : `
+                                    <hr>
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        Este reporte no incluye métricas de optimización porque no hay rutas optimizadas registradas.
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            $('#reportPreviewContent').html(content);
+        }
+
+
+
+        function downloadReport(reportType) {
+            currentReportType = reportType;
+
+            const button = $('button[onclick="downloadReport(\'' + reportType + '\')"]');
+            const originalText = button.html();
+            button.html('<i class="fas fa-spinner fa-spin me-2"></i>Generando...').prop('disabled', true);
+
+            try {
+                const downloadUrl = reportType === 'admin' ? '/admin/download_report' : '/coordinator/download_report';
+
+                // Crear enlace temporal para descarga
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                setTimeout(() => {
+                    button.html(originalText).prop('disabled', false);
+                    showAlert('Reporte generado y descargado correctamente', 'success');
+                }, 3000);
+
+            } catch (error) {
+                console.error('Error en descarga:', error);
+                button.html(originalText).prop('disabled', false);
+                showAlert('Error al generar el reporte. Intenta de nuevo.', 'danger');
+            }
+        }
+
+        function refreshAllMetrics() {
+            showAlert('Actualizando todas las métricas...', 'info');
+            isUpdating = false; // Permitir actualización forzada
+            updateCounter = 0; // Resetear contador
+            loadFuelMetrics();
+            updateVehiclePositions();
+        }
+
+
+
+        function resetMetrics() {
+            isUpdating = false;
+            updateCounter = 0;
+
+            // Limpiar intervalos
+            if (window.dashboardIntervals) {
+                clearInterval(window.dashboardIntervals.vehicles);
+                clearInterval(window.dashboardIntervals.metrics);
+            }
+
+            updateSystemStatus('info', 'Reiniciando');
+            showAlert('Sistema reiniciado correctamente', 'success');
+
+            // Reinicializar
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        }
+
+        function exportData() {
+            showAlert('Función de exportación en desarrollo', 'info');
+        }
+
+        function debugMetrics() {
+            console.log('=== DEBUG MÉTRICAS ===');
+            console.log('- isUpdating:', isUpdating);
+            console.log('- updateCounter:', updateCounter);
+            console.log('- MAX_RETRIES:', MAX_RETRIES);
+            console.log('- Gráficos activos:', {
+                vehicle: !!vehicleFuelChart,
+                driver: !!driverFuelChart,
+                route: !!routeFuelChart,
+                trend: !!fuelTrendChart
+            });
+            console.log('- Intervalos:', window.dashboardIntervals);
+            console.log('===================');
+
+        }
+
+        function createDriverFuelChart(data) {
+            const ctx = document.getElementById('driverFuelChart');
+            if (!ctx) return;
+
+            try {
+                if (driverFuelChart) {
+                    driverFuelChart.destroy();
+                    driverFuelChart = null;
+                }
+
+                if (data && Array.isArray(data) && data.length > 0) {
+                    const cleanData = data.slice(0, 10).map(d => ({
+                        driver: String(d.driver || 'N/A'),
+                        consumption: Math.max(parseFloat(d.consumption) || 0, 0),
+                        efficiency: Math.max(parseFloat(d.efficiency) || 0, 0)
+                    }));
+
+                    driverFuelChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: cleanData.map(d => d.driver),
+                            datasets: [{
+                                label: 'Consumo (L)',
+                                data: cleanData.map(d => d.consumption),
+                                backgroundColor: '#36b9cc',
+                                borderColor: '#258391',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: { display: true, text: 'Litros' }
+                                }
+                            },
+                            plugins: {
+                                legend: { display: false }
+                            }
+                        }
+                    });
+
+                    updateDriverFuelTable(cleanData);
+                } else {
+                    updateDriverFuelTable([]);
+                }
+            } catch (error) {
+                console.error('Error creando gráfico de choferes:', error);
+                updateDriverFuelTable([]);
+            }
+        }
+
+
+
+        function updateDriverFuelTable(data) {
+            let tableHtml = '';
+
+            if (data && data.length > 0) {
+                data.forEach(driver => {
+                    tableHtml += `
+                    <tr>
+                        <td><strong>${driver.driver}</strong></td>
+                        <td><span class="badge bg-warning">${driver.consumption.toFixed(1)}L</span></td>
+                        <td><span class="badge bg-success">${driver.efficiency.toFixed(1)} km/L</span></td>
+                    </tr>
+                `;
+                });
+            } else {
+                tableHtml = '<tr><td colspan="3" class="text-center text-muted">No hay datos disponibles</td></tr>';
+            }
+
+            $('#driverFuelTable').html(tableHtml);
+        }
+
+
+        function createRouteFuelChart(data) {
+            const ctx = document.getElementById('routeFuelChart');
+            if (!ctx) return;
+
+            try {
+                if (routeFuelChart) {
+                    routeFuelChart.destroy();
+                    routeFuelChart = null;
+                }
+
+                if (data && Array.isArray(data) && data.length > 0) {
+                    const cleanData = data.slice(0, 10).map(r => ({
+                        route: String(r.route || 'N/A'),
+                        avg_consumption: Math.max(parseFloat(r.avg_consumption) || 0, 0),
+                        completions: Math.max(parseInt(r.completions) || 0, 0)
+                    }));
+
+                    routeFuelChart = new Chart(ctx, {
+                        type: 'polarArea',
+                        data: {
+                            labels: cleanData.map(r => r.route),
+                            datasets: [{
+                                data: cleanData.map(r => r.avg_consumption),
+                                backgroundColor: ['#e74a3b', '#f39c12', '#2ecc71', '#3498db', '#9b59b6'],
+                                borderWidth: 2,
+                                borderColor: '#fff'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom' }
+                            }
+                        }
+                    });
+
+                    updateRouteFuelTable(cleanData);
+                } else {
+                    updateRouteFuelTable([]);
+                }
+            } catch (error) {
+                console.error('Error creando gráfico de rutas:', error);
+                updateRouteFuelTable([]);
+            }
+        }
+
+
+        function updateRouteFuelTable(data) {
+            let tableHtml = '';
+
+            if (data && data.length > 0) {
+                data.forEach(route => {
+                    const shortRoute = route.route.length > 15 ? route.route.substring(0, 15) + '...' : route.route;
+                    tableHtml += `
+                <tr>
+                    <td><strong title="${route.route}">${shortRoute}</strong></td>
+                    <td><span class="badge bg-info">${route.avg_consumption.toFixed(1)}L</span></td>
+                    <td><span class="badge bg-secondary">${route.completions}</span></td>
+                </tr>
+            `;
+                });
+            } else {
+                tableHtml = '<tr><td colspan="3" class="text-center text-muted">No hay datos disponibles</td></tr>';
+            }
+
+            $('#routeFuelTable').html(tableHtml);
+        }
+
+        function loadFuelTrendData(days) {
+            // Generar datos más realistas para la tendencia
+            const dates = Array.from({ length: days }, (_, i) => {
+                const date = new Date();
+                date.setDate(date.getDate() - (days - 1 - i));
+                return date.toISOString().split('T')[0];
+            });
+
+            // Generar tendencia más realista con variación diaria
+            const baseConsumption = 12;
+            const consumption = dates.map((_, i) => {
+                const weekday = new Date(dates[i]).getDay();
+                const isWeekend = weekday === 0 || weekday === 6;
+                const base = isWeekend ? baseConsumption * 0.6 : baseConsumption;
+                return base + (Math.random() * 6 - 3); // ±3 litros de variación
+            });
+
+            const baseRoutes = 5;
+            const routes = dates.map((_, i) => {
+                const weekday = new Date(dates[i]).getDay();
+                const isWeekend = weekday === 0 || weekday === 6;
+                const base = isWeekend ? baseRoutes * 0.4 : baseRoutes;
+                return Math.max(1, Math.floor(base + (Math.random() * 4 - 2))); // ±2 rutas de variación
+            });
+
+            const trendData = {
+                dates: dates,
+                consumption: consumption,
+                routes: routes
+            };
+
+            createFuelTrendChart(trendData, days);
+        }
+
+        function createFuelTrendChart(data, days) {
+            try {
+                if (fuelTrendChart) {
+                    fuelTrendChart.destroy();
+                    fuelTrendChart = null;
+                }
+
+                const ctx = document.getElementById('fuelTrendChart');
+                if (!ctx) return;
+
+                fuelTrendChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.dates.map(date => {
+                            const d = new Date(date);
+                            return d.toLocaleDateString('es-ES', {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric'
+                            });
+                        }),
+                        datasets: [
+                            {
+                                label: 'Consumo Diario (L)',
+                                data: data.consumption,
+                                borderColor: '#dc3545',
+                                backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                                tension: 0.4,
+                                fill: true,
+                                pointBackgroundColor: '#dc3545',
+                                pointBorderColor: '#fff',
+                                pointBorderWidth: 2,
+                                pointRadius: 4
+                            },
+                            {
+                                label: 'Rutas Completadas',
+                                data: data.routes,
+                                borderColor: '#28a745',
+                                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                tension: 0.4,
+                                yAxisID: 'y1',
+                                pointBackgroundColor: '#28a745',
+                                pointBorderColor: '#fff',
+                                pointBorderWidth: 2,
+                                pointRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: {
+                                    display: true,
+                                    text: 'Litros consumidos',
+                                    font: {
+                                        size: 11
+                                    }
+                                },
+                                ticks: {
+                                    font: {
+                                        size: 10
+                                    }
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: {
+                                    display: true,
+                                    text: 'Rutas completadas',
+                                    font: {
+                                        size: 11
+                                    }
+                                },
+                                grid: { drawOnChartArea: false },
+                                ticks: {
+                                    font: {
+                                        size: 10
+                                    }
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    font: {
+                                        size: 10
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: `Tendencia de consumo - Últimos ${days} días`,
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            },
+                            legend: {
+                                labels: {
+                                    font: {
+                                        size: 11
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function (context) {
+                                        return context[0].label;
+                                    },
+                                    label: function (context) {
+                                        const suffix = context.dataset.label.includes('Consumo') ? 'L' : ' rutas';
+                                        return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}${suffix}`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error creando gráfico de tendencia:', error);
+            }
+        }
+
+        function updateUpdateStatus() {
+            const statusText = updateCounter < MAX_RETRIES ? 'Activas' : 'Pausadas';
+            const statusClass = updateCounter < MAX_RETRIES ? 'bg-info' : 'bg-warning';
+            $('#updateStatus').removeClass('bg-info bg-warning bg-danger').addClass(statusClass).text(statusText);
+        }
+
+
+        function previewReport(reportType) {
+            currentReportType = reportType;
+
+            $('#reportPreviewModal').modal('show');
+            $('#reportPreviewContent').html(`
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                        <p class="mt-2">Generando vista previa del reporte...</p>
+                        <small class="text-muted">Recopilando métricas de optimización...</small>
+                    </div>
+                `);
+
+            $.get(`/api/report/preview/${reportType}`)
+                .done(function (data) {
+                    renderReportPreview(data);
+                })
+                .fail(function (xhr) {
+                    let errorMsg = 'Error al cargar vista previa del reporte';
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        errorMsg = response.error || errorMsg;
+                    } catch (e) {
+                        console.error('Error parsing response:', e);
+                        if (xhr.status === 404) {
+                            errorMsg = 'Ruta de API no encontrada. Verifica que la función preview_report_data esté implementada.';
+                        } else if (xhr.status === 500) {
+                            errorMsg = 'Error interno del servidor. Verifica los logs de Flask.';
+                        }
+                    }
+
+                    $('#reportPreviewContent').html(`
+                                        <div class="alert alert-danger">
+                                            <i class="fas fa-exclamation-triangle me-2"></i>
+                                            <strong>Error:</strong> ${errorMsg}
+                                            <hr>
+                                            <small>Código de estado: ${xhr.status}</small>
+                                        </div>
+                                    `);
+                });
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    </script>
+    {% endblock %}
