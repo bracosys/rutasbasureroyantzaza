@@ -3375,6 +3375,11 @@
         $('#centerPositionBtn').show();
     }
 
+    
+
+    // === MARCADOR GPS CON ROTACIÓN MEJORADA ===
+    // Reemplaza la función updateMapPosition en tu navigate.html
+
     function updateMapPosition(position) {
         if (!map) return;
 
@@ -3384,13 +3389,36 @@
                 map.removeLayer(positionMarker);
             }
 
-            // Crear nuevo marcador de posición
+            // Calcular rotación del marcador
+            let rotation = 0;
+            
+            // Usar heading del GPS si está disponible
+            if (position.heading !== null && position.heading !== undefined && position.heading >= 0) {
+                rotation = position.heading;
+            } 
+            // Si no hay heading del GPS, calcular desde el movimiento
+            else if (previousPosition && position.speed > 1) { // Solo si se mueve > 1 m/s
+                rotation = calculateBearing(
+                    previousPosition.lat, previousPosition.lng,
+                    position.lat, position.lng
+                );
+            }
+
+            // Crear icono rotado
+            const rotatedIcon = L.divIcon({
+                html: `
+                    <div class="position-marker" style="transform: rotate(${rotation}deg);">
+                        <i class="fas fa-location-arrow text-white"></i>
+                    </div>
+                `,
+                className: 'position-marker-icon',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10] // Centrar el punto de rotación
+            });
+
+            // Crear nuevo marcador con icono rotado
             positionMarker = L.marker([position.lat, position.lng], {
-                icon: L.divIcon({
-                    html: '<div class="position-marker"><i class="fas fa-location-arrow text-white"></i></div>',
-                    className: 'position-marker-icon',
-                    iconSize: [20, 20]
-                })
+                icon: rotatedIcon
             }).addTo(map);
 
             // Añadir círculo de precisión si la precisión es buena
@@ -3404,10 +3432,231 @@
                 }).addTo(map);
             }
 
+            // Actualizar información de dirección en UI
+            updateDirectionDisplay(rotation, position.speed);
+
         } catch (error) {
             console.error('Error updating map position:', error);
         }
     }
+
+    // === FUNCIÓN PARA ACTUALIZAR DISPLAY DE DIRECCIÓN ===
+    function updateDirectionDisplay(heading, speed) {
+        // Convertir heading a dirección cardinal
+        const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        const directionIndex = Math.round(heading / 45) % 8;
+        const cardinalDirection = directions[directionIndex];
+        
+        // Actualizar overlay con información de dirección
+        const overlayCoords = document.getElementById('overlayCoords');
+        if (overlayCoords && speed > 0.5) { // Solo mostrar si se está moviendo
+            const currentText = overlayCoords.textContent;
+            const coordsOnly = currentText.split('\n')[0] || currentText;
+            overlayCoords.innerHTML = `
+                ${coordsOnly}<br>
+                <small class="text-primary">
+                    <i class="fas fa-compass me-1"></i>
+                    ${Math.round(heading)}° (${cardinalDirection})
+                </small>
+            `;
+        }
+    }
+
+    // === FUNCIÓN MEJORADA PARA ALMACENAR PUNTOS CON ORIENTACIÓN ===
+    function storeTrackingPoint(position) {
+        const now = new Date();
+        
+        if (!routeTrackingData.startTime) {
+            routeTrackingData.startTime = now;
+            console.log('Iniciando tracking de ruta');
+        }
+        
+        // Calcular heading si no está disponible del GPS
+        let calculatedHeading = position.coords.heading;
+        if ((calculatedHeading === null || calculatedHeading === undefined) && previousPosition && position.coords.speed > 1) {
+            calculatedHeading = calculateBearing(
+                previousPosition.lat, previousPosition.lng,
+                position.coords.latitude, position.coords.longitude
+            );
+        }
+        
+        const trackingPoint = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            timestamp: now.toISOString(),
+            speed: position.coords.speed || 0,
+            accuracy: position.coords.accuracy,
+            heading: calculatedHeading || 0, // Usar heading calculado o del GPS
+            altitude: position.coords.altitude || null
+        };
+        
+        trackingPoints.push(trackingPoint);
+        routeTrackingData.trackingPoints.push(trackingPoint);
+        
+        updateTrackingStatistics(trackingPoint);
+        
+        if (trackingPoints.length % 20 === 0) {
+            console.log(`Tracking: ${trackingPoints.length} puntos registrados`);
+        }
+    }
+
+    // === AGREGAR ESTILOS CSS PARA EL MARCADOR ROTATIVO ===
+    // Agrega esto al bloque de estilos CSS en tu navigate.html
+
+    const rotationStyles = `
+    <style>
+    /* Mejorar el marcador de posición con rotación suave */
+    .position-marker {
+        background: #007bff;
+        border: 3px solid white;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        transition: transform 0.3s ease;
+    }
+
+    .position-marker i {
+        font-size: 12px;
+        margin-top: -1px; /* Ajustar para centrar la flecha */
+    }
+
+    /* Animación de pulso mejorada */
+    @keyframes pulse-position {
+        0% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.7);
+        }
+        70% {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 8px rgba(0, 123, 255, 0);
+        }
+        100% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(0, 123, 255, 0);
+        }
+    }
+
+    .position-marker-icon {
+        animation: pulse-position 2s infinite;
+    }
+
+    /* Mejorar la flecha de dirección */
+    .fas.fa-location-arrow {
+        transform: rotate(-45deg); /* Ajustar orientación base de la flecha */
+    }
+    </style>
+    `;
+
+    // Insertar estilos si no existen ya
+    if (!document.getElementById('rotation-styles')) {
+        const styleElement = document.createElement('div');
+        styleElement.id = 'rotation-styles';
+        styleElement.innerHTML = rotationStyles;
+        document.head.appendChild(styleElement);
+    }
+
+    // === FUNCIÓN PARA CALCULAR BEARING (si no existe ya) ===
+    function calculateBearing(lat1, lng1, lat2, lng2) {
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const lat1Rad = lat1 * Math.PI / 180;
+        const lat2Rad = lat2 * Math.PI / 180;
+        
+        const y = Math.sin(dLng) * Math.cos(lat2Rad);
+        const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+        
+        let bearing = Math.atan2(y, x) * 180 / Math.PI;
+        return (bearing + 360) % 360; // Normalizar a 0-360°
+    }
+
+    // === FUNCIÓN ALTERNATIVA PARA DISPOSITIVOS SIN HEADING ===
+    function enhanceGPSOptions() {
+        // Opciones mejoradas para GPS con orientación
+        return {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 5000, // Reducir para obtener datos más frescos
+            // Estas opciones adicionales pueden ayudar en algunos navegadores
+            desiredAccuracy: 10,
+            maxWait: 20000
+        };
+    }
+
+    // === MODIFICAR LA FUNCIÓN startGPS PARA USAR LAS OPCIONES MEJORADAS ===
+    function startGPSEnhanced() {
+        if (!navigator.geolocation) {
+            showToast('Geolocalización no disponible', 'error');
+            return;
+        }
+
+        const options = enhanceGPSOptions();
+        showToast('Activando GPS con orientación...', 'info');
+
+        gpsWatchId = navigator.geolocation.watchPosition(
+            onGPSSuccess,
+            onGPSError,
+            options
+        );
+
+        gpsActive = true;
+        updateGPSUI();
+    }
+
+    // === FUNCIÓN PARA SOLICITAR PERMISOS DE ORIENTACIÓN (MÓVILES) ===
+    function requestOrientationPermission() {
+        // Para dispositivos iOS 13+ que requieren permiso explícito
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(response => {
+                    if (response === 'granted') {
+                        console.log('Permiso de orientación concedido');
+                        enableOrientationTracking();
+                    } else {
+                        console.log('Permiso de orientación denegado');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error solicitando permiso de orientación:', error);
+                });
+        } else {
+            // Para otros dispositivos, activar directamente
+            enableOrientationTracking();
+        }
+    }
+
+    // === FUNCIÓN PARA HABILITAR TRACKING DE ORIENTACIÓN ===
+    function enableOrientationTracking() {
+        window.addEventListener('deviceorientation', function(event) {
+            if (event.alpha !== null && lastPosition && positionMarker) {
+                // event.alpha es el heading del dispositivo
+                const deviceHeading = event.alpha;
+                
+                // Solo actualizar si no tenemos heading del GPS
+                if (!lastPosition.heading || lastPosition.heading < 0) {
+                    // Actualizar marcador con orientación del dispositivo
+                    const rotatedIcon = L.divIcon({
+                        html: `
+                            <div class="position-marker" style="transform: rotate(${deviceHeading}deg);">
+                                <i class="fas fa-location-arrow text-white"></i>
+                            </div>
+                        `,
+                        className: 'position-marker-icon',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    });
+                    
+                    positionMarker.setIcon(rotatedIcon);
+                }
+            }
+        });
+    }
+
+
+
+
 
     function updateStatistics(position) {
         // Actualizar velocidad
@@ -4007,6 +4256,12 @@
                     .on('click', exportTrackingData);
 
                 $('.card-body').first().append(debugBtn);
+            }
+            // Solicitar permisos de orientación en móviles
+            if (isMobileDevice()) {
+                setTimeout(() => {
+                    requestOrientationPermission();
+                }, 2000); // Esperar 2 segundos después de cargar
             }
         });
 
