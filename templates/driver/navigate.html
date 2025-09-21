@@ -25,300 +25,387 @@
 {% endblock %}
 
 {% block content %}
-<!-- Header de navegación inteligente -->
-<div class="navigation-header">
-    <div class="route-info">
-        <h1 class="route-title">
-            <i class="fas fa-route me-2"></i>
-            {{ route.name }}
-        </h1>
-        <div class="navigation-controls">
-            <span class="status-indicator status-gps-inactive" id="gpsStatusIndicator">
-                <i class="fas fa-satellite-dish"></i>
-                GPS Inactivo
-            </span>
-            <button class="btn btn-outline-primary btn-sm" onclick="toggleSidePanel()">
-                <i class="fas fa-cog"></i>
-            </button>
+<!-- Contenedor principal responsive -->
+<div class="container-fluid px-2">
+    <div class="row">
+        <!-- Panel de control - Móvil primero -->
+        <div class="col-12 col-lg-4 mb-3 mb-lg-4">
+            <!-- Card de información de ruta -->
+            <div class="card shadow">
+                <div class="card-header py-2 py-lg-3 bg-success text-white">
+                    <h6 class="m-0 font-weight-bold">
+                        <i class="fas fa-route me-2"></i>Ruta en Progreso
+                    </h6>
+                </div>
+                <div class="card-body p-3">
+                    <div class="mb-3">
+                        <strong>Ruta:</strong>
+                        <span class="d-block d-lg-inline">{{ route.name }}</span>
+                    </div>
+
+                    {% if route.distance %}
+                    <div class="mb-3">
+                        <strong>Distancia:</strong> {{ route.distance|distance_format }}
+                    </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <strong>Iniciada:</strong>
+                        <span class="d-block d-lg-inline">{{ completion.started_at|datetime_format }}</span>
+                    </div>
+
+                    {% if completion.vehicle %}
+                    <div class="mb-3">
+                        <strong>Vehículo:</strong>
+                        <span class="d-block">{{ completion.vehicle.brand }} {{ completion.vehicle.model }}</span>
+                        <small class="text-muted">Placa: {{ completion.vehicle.plate_number }}</small>
+                    </div>
+                    {% endif %}
+
+                    {% if completion.fuel_start %}
+                    <div class="mb-3">
+                        <strong>Combustible inicial:</strong>
+                        <span class="badge bg-info">{{ completion.fuel_start }}/4</span>
+                    </div>
+                    {% endif %}
+
+                    <!-- Estado de GPS con indicador visual mejorado -->
+                    <div class="mb-3">
+                        <strong>Estado GPS:</strong>
+                        <span id="gpsStatus" class="badge bg-secondary">
+                            <i class="fas fa-satellite-dish me-1"></i>Desconectado
+                        </span>
+                        <div id="gpsAccuracy" class="small text-muted mt-1" style="display: none;"></div>
+                    </div>
+
+                    <!-- Posición actual mejorada para móvil -->
+                    <div class="mb-3" id="currentPosition" style="display: none;">
+                        <strong>Posición actual:</strong>
+                        <div id="coordinates" class="small text-muted mt-1"></div>
+                        <div id="lastUpdate" class="small text-muted"></div>
+                    </div>
+
+                    <!-- Tiempo transcurrido -->
+                    <div class="mb-3">
+                        <strong>Tiempo transcurrido:</strong>
+                        <span id="elapsedTime" class="badge bg-primary">00:00:00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controles de navegación optimizados para móvil -->
+            <div class="card shadow mt-3">
+                <div class="card-header py-2 py-lg-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Controles</h6>
+                </div>
+                <div class="card-body p-3">
+                    <!-- Botón GPS más grande para móvil -->
+                    <div class="d-grid gap-2 mb-3">
+                        <button id="toggleGpsBtn" class="btn btn-outline-primary btn-lg" type="button">
+                            <i class="fas fa-satellite-dish me-2"></i>
+                            <span id="gpsButtonText">Activar GPS</span>
+                        </button>
+                    </div>
+
+                    <!-- Botones de acción optimizados -->
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-success btn-lg" data-bs-toggle="modal"
+                            data-bs-target="#completeModal">
+                            <i class="fas fa-flag-checkered me-2"></i>Completar Ruta
+                        </button>
+
+                        <button type="button" class="btn btn-warning" onclick="pauseNavigation()">
+                            <i class="fas fa-pause me-2"></i>Pausar
+                        </button>
+
+                        <button type="button" class="btn btn-secondary" onclick="cancelRoute({{ completion.id }})">
+                            <i class="fas fa-times me-2"></i>Cancelar Ruta
+                        </button>
+                    </div>
+
+                    <!-- Información adicional -->
+                    <hr>
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i>
+                        El GPS ayuda a registrar tu progreso automáticamente.
+                    </small>
+                </div>
+            </div>
+
+            <!-- NUEVO: Card de navegación activa (solo desktop) -->
+            <div class="card shadow mt-3 d-none" id="navigationControls">
+                <div class="card-header py-2 py-lg-3">
+                    <h6 class="m-0 font-weight-bold text-success">
+                        <i class="fas fa-route me-2"></i>Navegación Activa
+                    </h6>
+                </div>
+                <div class="card-body p-3">
+                    <!-- Instrucción actual para desktop -->
+                    <div class="d-none d-lg-block mb-3">
+                        <div class="alert alert-info mb-2">
+                            <i id="desktopTurnIcon" class="fas fa-arrow-up me-2"></i>
+                            <strong id="desktopTurnInstruction">Cargando instrucciones...</strong>
+                            <br>
+                            <small id="desktopTurnDistance" class="text-muted">Preparando navegación</small>
+                        </div>
+                    </div>
+
+                    <!-- Próximas instrucciones -->
+                    <div class="d-none d-lg-block mb-3">
+                        <h6 class="text-muted mb-2">Próximas indicaciones:</h6>
+                        <div id="upcomingInstructions" class="small">
+                            <div class="text-muted">Las instrucciones aparecerán aquí</div>
+                        </div>
+                    </div>
+
+                    <!-- Controles de navegación -->
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-warning navigation-control-btn" id="pauseNavigationBtn"
+                            onclick="toggleNavigation()">
+                            <i class="fas fa-pause me-2"></i>Pausar Navegación
+                        </button>
+
+                        <button type="button" class="btn btn-outline-info navigation-control-btn" id="recalculateBtn"
+                            onclick="recalculateFromCurrentPosition()">
+                            <i class="fas fa-sync me-2"></i>Recalcular Ruta
+                        </button>
+
+                        <button type="button" class="btn btn-outline-secondary navigation-control-btn"
+                            id="skipInstructionBtn" onclick="skipCurrentInstruction()">
+                            <i class="fas fa-step-forward me-2"></i>Saltar Instrucción
+                        </button>
+                    </div>
+
+                    <!-- Estadísticas de navegación -->
+                    <hr class="my-3">
+                    <div class="row text-center small">
+                        <div class="col-4">
+                            <div class="text-muted">Progreso</div>
+                            <div id="navigationProgress" class="fw-bold">0%</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-muted">ETA</div>
+                            <div id="estimatedArrival" class="fw-bold">--:--</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-muted">Restante</div>
+                            <div id="remainingDistance" class="fw-bold">-- km</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel de estadísticas en tiempo real -->
+            <div class="card shadow mt-3 d-none d-lg-block">
+                <div class="card-header py-2">
+                    <h6 class="m-0 font-weight-bold text-info">
+                        <i class="fas fa-chart-line me-2"></i>Estadísticas
+                    </h6>
+                </div>
+                <div class="card-body p-3">
+                    <div class="row text-center">
+                        <div class="col-6 mb-2">
+                            <small class="text-muted">Velocidad</small>
+                            <div id="currentSpeed" class="h6 mb-0">0 km/h</div>
+                        </div>
+                        <div class="col-6 mb-2">
+                            <small class="text-muted">Distancia</small>
+                            <div id="traveledDistance" class="h6 mb-0">0.0 km</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mapa de navegación responsive -->
+        <div class="col-12 col-lg-8 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-2 py-lg-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="m-0 font-weight-bold text-primary">
+                            <i class="fas fa-map me-2"></i>Mapa de Navegación
+                        </h6>
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn btn-outline-primary" onclick="toggleFullscreen()"
+                                title="Pantalla completa">
+                                <i class="fas fa-expand"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="mapContainer" class="position-relative">
+                        <!-- Altura adaptativa según dispositivo -->
+                        <div id="navigationMap" style="height: 50vh; min-height: 300px; width: 100%;"></div>
+
+                        <!-- Panel de navegación turn-by-turn mejorado (móvil) -->
+                        <div id="navigationPanel"
+                            class="position-absolute top-0 start-0 end-0 bg-primary text-white p-3 d-lg-none"
+                            style="z-index: 1000; display: none;">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center flex-grow-1">
+                                    <i id="turnIcon" class="fas fa-arrow-up fa-2x me-3 direction-icon"
+                                        style="min-width: 50px; text-align: center;"></i>
+                                    <div class="flex-grow-1">
+                                        <div id="turnInstruction" class="fw-bold navigation-instruction">Mantén rumbo
+                                        </div>
+                                        <div id="turnDistance" class="navigation-distance">Continúa por la ruta</div>
+                                    </div>
+                                </div>
+
+                                <!-- Controles del panel de navegación -->
+                                <div class="d-flex gap-2 ms-2">
+                                    <button id="muteNavigationBtn" class="btn btn-sm btn-outline-light"
+                                        title="Silenciar navegación">
+                                        <i class="fas fa-volume-up"></i>
+                                    </button>
+                                    <button id="minimizeNavigationBtn" class="btn btn-sm btn-outline-light"
+                                        title="Minimizar panel">
+                                        <i class="fas fa-chevron-up"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Barra de progreso de la ruta -->
+                            <div class="progress mt-2" style="height: 3px;">
+                                <div id="routeProgress" class="progress-bar bg-success" role="progressbar"
+                                    style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Panel de navegación minimizado -->
+                        <div id="navigationPanelMinimized"
+                            class="position-absolute top-0 start-50 translate-middle-x bg-primary text-white px-3 py-1 rounded-bottom d-lg-none"
+                            style="z-index: 999; display: none; cursor: pointer;">
+                            <small id="miniInstruction">Navegación activa</small>
+                            <i class="fas fa-chevron-down ms-2"></i>
+                        </div>
+
+                        <!-- Overlay mejorado para móvil -->
+                        <div id="navigationOverlay"
+                            class="position-absolute top-0 end-0 m-2 bg-white bg-opacity-90 p-2 rounded shadow-sm d-none d-lg-block"
+                            style="z-index: 1000; display: none;">
+                            <small>
+                                <strong>Tu posición:</strong><br>
+                                <span id="overlayCoords" class="text-muted"></span><br>
+                                <span id="overlayTime" class="text-muted"></span>
+                            </small>
+                        </div>
+
+                        <!-- Controles de mapa para móvil -->
+                        <div id="mapControls" class="position-absolute bottom-0 start-0 m-2" style="z-index: 1000;">
+                            <div class="btn-group-vertical">
+                                <button type="button" class="btn btn-sm btn-light" onclick="centerOnRoute()"
+                                    title="Centrar en ruta">
+                                    <i class="fas fa-crosshairs"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-light" onclick="centerOnPosition()"
+                                    title="Mi ubicación" style="display: none;" id="centerPositionBtn">
+                                    <i class="fas fa-location-arrow"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-light" onclick="toggleMapType()"
+                                    title="Cambiar vista" id="mapTypeBtn">
+                                    <i class="fas fa-layer-group"></i>
+                                </button>
+                                <!-- El botón de voz se agregará dinámicamente aquí -->
+                            </div>
+                        </div>
+
+                        <!-- Indicador de carga del mapa -->
+                        <div id="mapLoading" class="position-absolute top-50 start-50 translate-middle">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando mapa...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
-
-<!-- Mapa principal mejorado -->
-<div class="map-container">
-    <div id="navigationMap"></div>
-
-    <!-- Overlay de información inteligente -->
-    <div class="smart-overlay" id="smartOverlay">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0 fw-bold">Estado de Navegación</h6>
-            <button class="btn btn-sm btn-outline-secondary minimize-btn" onclick="toggleOverlay()">
-                <i class="fas fa-chevron-left"></i>
-            </button>
-        </div>
-        <div class="overlay-content">
-            <div class="mb-2">
-                <small class="text-muted">Tiempo transcurrido</small>
-                <div class="fw-bold" id="elapsedTime">00:00:00</div>
-            </div>
-            <div class="mb-2">
-                <small class="text-muted">Posición actual</small>
-                <div class="small" id="currentPosition">Buscando GPS...</div>
-            </div>
-            <div class="mb-2">
-                <small class="text-muted">Precisión GPS</small>
-                <div class="small" id="gpsAccuracy">N/A</div>
-            </div>
-            <div class="mb-2">
-                <small class="text-muted">Distancia recorrida</small>
-                <div class="fw-bold" id="traveledDistance">0.0 km</div>
-            </div>
-            <div class="speed-display text-center">
-                <span id="currentSpeed">0</span> km/h
-            </div>
-            <div class="progress-bar-container">
-                <div class="progress-bar" id="routeProgress"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Panel de navegación turn-by-turn -->
-    <div class="turn-panel" id="turnPanel">
-        <div class="turn-instruction">
-            <div class="turn-icon" id="turnIcon">
-                <i class="fas fa-arrow-up"></i>
-            </div>
-            <div class="turn-details">
-                <h4 id="turnInstruction">Continúa recto</h4>
-                <p class="turn-distance" id="turnDistance">Mantén el rumbo actual</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Controles de mapa flotantes -->
-    <div class="map-controls">
-        <button class="map-control-btn" onclick="centerOnPosition()" title="Mi ubicación" id="centerBtn">
-            <i class="fas fa-location-arrow"></i>
-        </button>
-        <button class="map-control-btn" onclick="centerOnRoute()" title="Ver ruta completa">
-            <i class="fas fa-route"></i>
-        </button>
-        <button class="map-control-btn" onclick="toggleMapType()" title="Cambiar vista" id="mapTypeBtn">
-            <i class="fas fa-layer-group"></i>
-        </button>
-        <button class="map-control-btn" onclick="toggleTraffic()" title="Tráfico" id="trafficBtn">
-            <i class="fas fa-car"></i>
-        </button>
-    </div>
-
-    <!-- Botón de acción flotante inteligente -->
-    <div class="fab-container">
-        <button class="fab" id="mainActionBtn" onclick="toggleGPS()">
-            <i class="fas fa-play"></i>
-        </button>
-    </div>
-</div>
-
-<!-- Panel lateral mejorado -->
-<div class="side-panel" id="sidePanel">
-    <div class="panel-header">
-        <div class="d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Control de Navegación</h5>
-            <button class="btn btn-sm btn-outline-light" onclick="toggleSidePanel()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-    </div>
-    <div class="panel-content">
-        <!-- Información de la ruta -->
-        <div class="mb-4">
-            <h6 class="fw-bold text-primary">
-                <i class="fas fa-route me-2"></i>Información de Ruta
-            </h6>
-            <div class="bg-light p-3 rounded">
-                <strong>{{ route.name }}</strong><br>
-                {% if route.distance %}
-                <span class="text-muted">Distancia: {{ route.distance|distance_format }}</span><br>
-                {% endif %}
-                <span class="text-muted">Iniciada: {{ completion.started_at|datetime_format }}</span>
-            </div>
-        </div>
-
-        <!-- Información del vehículo -->
-        <div class="mb-4">
-            <h6 class="fw-bold text-primary">
-                <i class="fas fa-car me-2"></i>Vehículo Asignado
-            </h6>
-            <div class="bg-light p-3 rounded">
-                <strong>{{ completion.vehicle.brand }} {{ completion.vehicle.model }}</strong><br>
-                <span class="text-muted">Placa: {{ completion.vehicle.plate_number }}</span>
-            </div>
-        </div>
-
-        <!-- Estado de combustible inteligente -->
-        <div class="mb-4">
-            <h6 class="fw-bold text-primary">
-                <i class="fas fa-gas-pump me-2"></i>Estado de Combustible
-            </h6>
-            <div class="bg-light p-3 rounded">
-                <div class="d-flex justify-content-between align-items-center">
-                    <span>Inicial:</span>
-                    <span class="badge bg-success">{{ completion.fuel_start }}/4</span>
-                </div>
-                <div class="d-flex justify-content-between align-items-center mt-2">
-                    <span>Estimado actual:</span>
-                    <span class="badge bg-warning" id="currentFuelEstimate">{{ completion.fuel_start }}/4</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Estadísticas en tiempo real -->
-        <div class="mb-4">
-            <h6 class="fw-bold text-primary">
-                <i class="fas fa-chart-line me-2"></i>Estadísticas del Viaje
-            </h6>
-            <div class="row g-2">
-                <div class="col-6">
-                    <div class="bg-light p-2 rounded text-center">
-                        <small class="text-muted">Vel. Prom.</small>
-                        <div class="fw-bold" id="averageSpeed">0 km/h</div>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="bg-light p-2 rounded text-center">
-                        <small class="text-muted">Puntos GPS</small>
-                        <div class="fw-bold" id="gpsPointsCount">0</div>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="bg-light p-2 rounded text-center">
-                        <small class="text-muted">Paradas</small>
-                        <div class="fw-bold" id="stopsCount">0</div>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="bg-light p-2 rounded text-center">
-                        <small class="text-muted">Eficiencia</small>
-                        <div class="fw-bold" id="routeEfficiency">100%</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Controles principales -->
-        <div class="d-grid gap-2">
-            <button class="btn btn-success btn-lg" onclick="completeRoute()">
-                <i class="fas fa-flag-checkered me-2"></i>Completar Ruta
-            </button>
-            <button class="btn btn-warning" onclick="pauseNavigation()">
-                <i class="fas fa-pause me-2"></i>Pausar
-            </button>
-            <button class="btn btn-outline-danger" onclick="cancelRoute()">
-                <i class="fas fa-times me-2"></i>Cancelar Ruta
-            </button>
-        </div>
-
-        <!-- Información de optimización -->
-        <div class="mt-4 p-3 bg-info bg-opacity-10 rounded">
-            <small class="text-muted">
-                <i class="fas fa-brain me-1"></i>
-                Sistema inteligente activado: optimización automática de batería y precisión GPS.
-            </small>
-        </div>
-
-        <!-- Estado de conectividad -->
-        <div class="mt-3" id="connectivityStatus">
-            <div class="d-flex align-items-center text-success">
-                <i class="fas fa-wifi me-2"></i>
-                <small>Conexión estable</small>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal de completar ruta mejorado -->
+<!-- Modal para completar ruta - Optimizado para móvil -->
 <div class="modal fade" id="completeModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-flag-checkered me-2"></i>Completar Ruta: {{ route.name }}
-                </h5>
+                <h5 class="modal-title">Completar Ruta: {{ route.name }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <!-- Resumen automático del viaje -->
-                <div class="alert alert-success" id="tripSummaryAlert">
-                    <h6 class="mb-2">Resumen del Viaje</h6>
-                    <div class="row">
-                        <div class="col-4 text-center">
-                            <strong id="tripTime">--:--</strong><br>
-                            <small>Tiempo</small>
-                        </div>
-                        <div class="col-4 text-center">
-                            <strong id="tripDistance">-- km</strong><br>
-                            <small>Distancia</small>
-                        </div>
-                        <div class="col-4 text-center">
-                            <strong id="tripAvgSpeed">-- km/h</strong><br>
-                            <small>Vel. Prom.</small>
-                        </div>
-                    </div>
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Ruta iniciada:</strong> {{ completion.started_at|datetime_format }}<br>
+                    <strong>Vehículo:</strong> {{ completion.vehicle.brand }} {{ completion.vehicle.model }}<br>
+                    <strong>Combustible inicial:</strong> {{ completion.fuel_start }}/4
                 </div>
 
-                <!-- Selector de combustible inteligente -->
-                <div class="fuel-selector">
-                    <h6 class="mb-3">Nivel Final de Combustible</h6>
-                    <div class="fuel-options">
-                        <div class="fuel-option">
-                            <input type="radio" id="fuel1" name="fuelLevel" value="1">
-                            <div class="fuel-gauge fuel-1">
-                                <div class="fuel-fill"></div>
-                            </div>
-                            <div class="fuel-label">1/4</div>
-                        </div>
-                        <div class="fuel-option">
-                            <input type="radio" id="fuel2" name="fuelLevel" value="2">
-                            <div class="fuel-gauge fuel-2">
-                                <div class="fuel-fill"></div>
-                            </div>
-                            <div class="fuel-label">2/4</div>
-                        </div>
-                        <div class="fuel-option">
-                            <input type="radio" id="fuel3" name="fuelLevel" value="3" checked>
-                            <div class="fuel-gauge fuel-3">
-                                <div class="fuel-fill"></div>
-                            </div>
-                            <div class="fuel-label">3/4</div>
-                        </div>
-                        <div class="fuel-option">
-                            <input type="radio" id="fuel4" name="fuelLevel" value="4">
-                            <div class="fuel-gauge fuel-4">
-                                <div class="fuel-fill"></div>
-                            </div>
-                            <div class="fuel-label">4/4</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Notas del recorrido -->
                 <div class="mb-3">
-                    <label class="form-label">Notas del recorrido (opcional)</label>
-                    <textarea class="form-control" id="completionNotes" rows="3"
+                    <label for="fuel_end_level" class="form-label">Nivel Final de Combustible:</label>
+                    <div class="fuel-gauge">
+                        <div class="fuel-options">
+                            <input type="radio" id="fuel_end_1" name="fuel_end_level" value="1" required>
+                            <label for="fuel_end_1" class="fuel-label">
+                                <div class="fuel-bar">
+                                    <div class="fuel-fill fuel-1"></div>
+                                </div>
+                                <span>1/4</span>
+                            </label>
+
+                            <input type="radio" id="fuel_end_2" name="fuel_end_level" value="2" required>
+                            <label for="fuel_end_2" class="fuel-label">
+                                <div class="fuel-bar">
+                                    <div class="fuel-fill fuel-2"></div>
+                                </div>
+                                <span>2/4</span>
+                            </label>
+
+                            <input type="radio" id="fuel_end_3" name="fuel_end_level" value="3" required>
+                            <label for="fuel_end_3" class="fuel-label">
+                                <div class="fuel-bar">
+                                    <div class="fuel-fill fuel-3"></div>
+                                </div>
+                                <span>3/4</span>
+                            </label>
+
+                            <input type="radio" id="fuel_end_4" name="fuel_end_level" value="4" required>
+                            <label for="fuel_end_4" class="fuel-label">
+                                <div class="fuel-bar">
+                                    <div class="fuel-fill fuel-4"></div>
+                                </div>
+                                <span>4/4</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="completion_notes" class="form-label">Notas del recorrido (opcional):</label>
+                    <textarea class="form-control" id="completion_notes" rows="3"
                         placeholder="Observaciones sobre el recorrido, incidentes, condiciones de la ruta, etc."></textarea>
                 </div>
 
-                <!-- Análisis automático (se llenará dinámicamente) -->
-                <div id="analysisContainer" style="display: none;">
-                    <div class="alert alert-info">
-                        <h6>Análisis Inteligente del Recorrido</h6>
-                        <div id="analysisContent"></div>
+                <!-- Resumen del viaje -->
+                <div id="tripSummary" class="alert alert-light" style="display: none;">
+                    <h6 class="mb-2">Resumen del Viaje:</h6>
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <small class="text-muted">Tiempo total</small>
+                            <div id="summaryTime">--:--</div>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted">Distancia</small>
+                            <div id="summaryDistance">-- km</div>
+                        </div>
+                        <div class="col-4">
+                            <small class="text-muted">Velocidad prom.</small>
+                            <div id="summarySpeed">-- km/h</div>
+                        </div>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success" id="completeRouteBtn" onclick="completeRouteAdvanced()">
+                <button type="button" class="btn btn-success" id="completeRouteBtn">
                     <i class="fas fa-flag-checkered me-2"></i>Completar Ruta
                 </button>
             </div>
@@ -326,28 +413,40 @@
     </div>
 </div>
 
-<!-- Notificación toast inteligente -->
-<div class="notification-toast" id="notificationToast">
-    <div class="d-flex align-items-center">
-        <i class="fas fa-info-circle me-2" id="toastIcon"></i>
-        <span id="toastMessage">Mensaje de notificación</span>
+<!-- Modal de pantalla completa -->
+<div class="modal fade" id="fullscreenModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Navegación - {{ route.name }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="fullscreenMap" style="height: 100%; width: 100%;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast para notificaciones -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="gpsToast" class="toast" role="alert">
+        <div class="toast-header">
+            <i class="fas fa-satellite-dish text-primary me-2"></i>
+            <strong class="me-auto">GPS</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body" id="gpsToastBody">
+            <!-- Mensaje dinámico -->
+        </div>
     </div>
 </div>
 
 <!-- Indicador de conexión -->
-<div class="connection-indicator" id="connectionIndicator" style="display: none;">
-    <i class="fas fa-wifi-slash mb-2" style="font-size: 2rem;"></i><br>
-    <strong>Sin conexión a internet</strong><br>
-    <small>Los datos se sincronizarán cuando se restablezca la conexión</small>
-</div>
-
-<!-- Loading overlay -->
-<div class="loading-overlay" id="loadingOverlay">
-    <div class="loading-content">
-        <div class="loading-spinner-large"></div>
-        <h5>Inicializando navegación inteligente...</h5>
-        <p class="text-muted">Cargando mapa y configurando GPS</p>
-    </div>
+<div id="connectionStatus"
+    class="position-fixed top-0 start-50 translate-middle-x bg-danger text-white px-3 py-1 rounded-bottom"
+    style="z-index: 9999; display: none;">
+    <small><i class="fas fa-wifi-slash me-1"></i>Sin conexión</small>
 </div>
 {% endblock %}
 
@@ -355,295 +454,81 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
 <style>
-    :root {
-        --primary-color: #007bff;
-        --success-color: #28a745;
-        --warning-color: #ffc107;
-        --danger-color: #dc3545;
-        --dark-color: #343a40;
-        --light-color: #f8f9fa;
-    }
-
-    body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        margin: 0;
-        padding: 0;
-    }
-
-    /* Header de navegación fijo */
-    .navigation-header {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 1050;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-        padding: 0.75rem 1rem;
-        box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
-    }
-
-    .route-info {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-
-    .route-title {
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: var(--dark-color);
-        margin: 0;
-    }
-
-    .navigation-controls {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-    }
-
-    /* Panel lateral inteligente */
-    .side-panel {
-        position: fixed;
-        top: 80px;
-        right: -320px;
-        width: 320px;
-        height: calc(100vh - 80px);
-        background: white;
-        box-shadow: -5px 0 25px rgba(0, 0, 0, 0.15);
-        transition: right 0.3s ease;
-        z-index: 1040;
-        overflow-y: auto;
-        border-radius: 15px 0 0 0;
-    }
-
-    .side-panel.open {
-        right: 0;
-    }
-
-    .panel-header {
-        background: var(--primary-color);
-        color: white;
-        padding: 1rem;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
-
-    .panel-content {
-        padding: 1rem;
-    }
-
-    /* Mapa principal mejorado */
-    .map-container {
-        position: fixed;
-        top: 80px;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: #f0f0f0;
-    }
-
-    #navigationMap {
-        width: 100%;
-        height: 100%;
-        position: relative;
-    }
-
-    /* Overlay de información inteligente */
-    .smart-overlay {
-        position: absolute;
-        top: 20px;
-        left: 20px;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        border-radius: 15px;
-        padding: 1rem;
-        max-width: 280px;
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-        z-index: 1000;
-        transition: all 0.3s ease;
-    }
-
-    .smart-overlay.minimized {
-        max-width: 60px;
-        padding: 0.75rem;
-        cursor: pointer;
-    }
-
-    .smart-overlay.minimized .overlay-content {
-        display: none;
-    }
-
-    .smart-overlay.minimized .minimize-btn {
-        transform: rotate(180deg);
-    }
-
-    /* Panel de navegación turn-by-turn */
-    .turn-panel {
-        position: absolute;
-        bottom: 100px;
-        left: 20px;
-        right: 20px;
-        background: linear-gradient(135deg, var(--primary-color), #0056b3);
-        color: white;
-        border-radius: 15px;
-        padding: 1.25rem;
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-        z-index: 1000;
-        display: none;
-        animation: slideUp 0.3s ease;
-    }
-
-    @keyframes slideUp {
-        from {
-            transform: translateY(100%);
-            opacity: 0;
+    /* Estilos responsive mejorados */
+    @media (max-width: 768px) {
+        .container-fluid {
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
         }
 
-        to {
-            transform: translateY(0);
-            opacity: 1;
+        #navigationMap {
+            height: 60vh !important;
+            min-height: 400px !important;
+        }
+
+        .card-body {
+            padding: 1rem !important;
+        }
+
+        .btn-lg {
+            padding: 0.75rem 1.5rem;
+            font-size: 1.1rem;
+        }
+
+        /* Hacer los botones más fáciles de tocar */
+        .fuel-label {
+            padding: 0.5rem;
+            margin: 0.25rem;
+        }
+
+        .fuel-bar {
+            width: 35px;
+            height: 70px;
         }
     }
 
-    .turn-instruction {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .turn-icon {
-        font-size: 2.5rem;
-        min-width: 50px;
-        text-align: center;
-    }
-
-    .turn-details h4 {
-        margin: 0;
-        font-size: 1.2rem;
-        font-weight: 600;
-    }
-
-    .turn-distance {
-        font-size: 0.9rem;
-        opacity: 0.9;
-        margin: 0;
-    }
-
-    /* Botón de acción flotante */
-    .fab-container {
-        position: absolute;
-        bottom: 20px;
-        right: 20px;
-        z-index: 1001;
-    }
-
-    .fab {
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        background: var(--success-color);
-        color: white;
-        border: none;
-        box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.5rem;
-        transition: all 0.3s ease;
-        cursor: pointer;
-    }
-
-    .fab:hover {
-        transform: scale(1.1);
-        box-shadow: 0 12px 30px rgba(40, 167, 69, 0.4);
-    }
-
-    .fab.danger {
-        background: var(--danger-color);
-        box-shadow: 0 8px 25px rgba(220, 53, 69, 0.3);
-    }
-
-    /* Indicadores de estado */
-    .status-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 500;
-    }
-
-    .status-gps-active {
-        background: rgba(40, 167, 69, 0.1);
-        color: var(--success-color);
-        animation: pulse 2s infinite;
-    }
-
-    .status-gps-inactive {
-        background: rgba(108, 117, 125, 0.1);
-        color: #6c757d;
-    }
-
-    .status-gps-error {
-        background: rgba(220, 53, 69, 0.1);
-        color: var(--danger-color);
-    }
-
-    @keyframes pulse {
-
-        0%,
-        100% {
-            opacity: 1;
-        }
-
-        50% {
-            opacity: 0.7;
-        }
-    }
-
-    /* Selector de combustible mejorado */
-    .fuel-selector {
+    /* Estilos para el selector de combustible mejorados */
+    .fuel-gauge {
         background: #f8f9fa;
-        border-radius: 15px;
-        padding: 1rem;
-        margin: 1rem 0;
+        border-radius: 10px;
+        padding: 20px;
+        border: 1px solid #dee2e6;
     }
 
     .fuel-options {
         display: flex;
-        gap: 0.75rem;
-        justify-content: space-between;
+        gap: 10px;
+        justify-content: center;
+        align-items: end;
+        flex-wrap: nowrap;
     }
 
-    .fuel-option {
-        flex: 1;
-        text-align: center;
+    .fuel-label {
         cursor: pointer;
-        transition: all 0.3s ease;
+        text-align: center;
+        transition: transform 0.2s;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px;
+        border-radius: 8px;
+        min-width: 60px;
     }
 
-    .fuel-option input[type="radio"] {
-        display: none;
+    .fuel-label:hover {
+        transform: scale(1.05);
+        background-color: rgba(0, 123, 255, 0.1);
     }
 
-    .fuel-gauge {
-        width: 100%;
+    .fuel-bar {
+        width: 30px;
         height: 60px;
+        border: 2px solid #333;
+        border-radius: 15px;
         background: #e9ecef;
-        border: 2px solid #dee2e6;
-        border-radius: 30px;
         position: relative;
+        margin-bottom: 8px;
         overflow: hidden;
-        margin-bottom: 0.5rem;
-        transition: all 0.3s ease;
     }
 
     .fuel-fill {
@@ -651,229 +536,378 @@
         bottom: 0;
         width: 100%;
         transition: all 0.3s ease;
-        border-radius: 0 0 28px 28px;
     }
 
-    .fuel-1 .fuel-fill {
+    .fuel-1 {
         height: 25%;
-        background: linear-gradient(180deg, #dc3545, #c82333);
+        background: linear-gradient(180deg, #dc3545 0%, #c82333 100%);
+        border-radius: 0 0 13px 13px;
     }
 
-    .fuel-2 .fuel-fill {
+    .fuel-2 {
         height: 50%;
-        background: linear-gradient(180deg, #fd7e14, #e8670e);
+        background: linear-gradient(180deg, #fd7e14 0%, #e8670e 100%);
+        border-radius: 0 0 13px 13px;
     }
 
-    .fuel-3 .fuel-fill {
+    .fuel-3 {
         height: 75%;
-        background: linear-gradient(180deg, #ffc107, #e0a800);
+        background: linear-gradient(180deg, #ffc107 0%, #e0a800 100%);
+        border-radius: 0 0 13px 13px;
     }
 
-    .fuel-4 .fuel-fill {
+    .fuel-4 {
         height: 100%;
-        background: linear-gradient(180deg, #28a745, #1e7e34);
-        border-radius: 28px;
+        background: linear-gradient(180deg, #28a745 0%, #1e7e34 100%);
+        border-radius: 13px;
     }
 
-    .fuel-option:hover .fuel-gauge {
-        transform: scale(1.05);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    input[type="radio"] {
+        display: none;
     }
 
-    .fuel-option input:checked+.fuel-gauge {
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+    input[type="radio"]:checked+.fuel-label {
         transform: scale(1.1);
+        background-color: rgba(0, 123, 255, 0.2);
     }
 
-    .fuel-label {
+    input[type="radio"]:checked+.fuel-label .fuel-bar {
+        box-shadow: 0 0 15px rgba(0, 123, 255, 0.6);
+        border-color: #007bff;
+    }
+
+    input[type="radio"]:checked+.fuel-label span {
+        font-weight: bold;
+        color: #007bff;
+    }
+
+    .fuel-label span {
         font-size: 0.9rem;
-        font-weight: 600;
         color: #6c757d;
-        transition: color 0.3s ease;
-    }
-
-    .fuel-option input:checked+.fuel-gauge+.fuel-label {
-        color: var(--primary-color);
-    }
-
-    /* Controles de mapa flotantes */
-    .map-controls {
-        position: absolute;
-        bottom: 180px;
-        left: 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        z-index: 1000;
-    }
-
-    .map-control-btn {
-        width: 45px;
-        height: 45px;
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        border: none;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--dark-color);
         transition: all 0.3s ease;
-        cursor: pointer;
     }
 
-    .map-control-btn:hover {
-        background: white;
-        transform: scale(1.1);
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+    /* Estilos para el estado GPS */
+    .badge {
+        font-size: 0.8em;
     }
 
-    .map-control-btn.active {
-        background: var(--primary-color);
-        color: white;
+    #navigationOverlay {
+        backdrop-filter: blur(5px);
+        max-width: 200px;
     }
 
-    /* Notificaciones mejoradas */
-    .notification-toast {
-        position: fixed;
-        top: 100px;
-        right: 20px;
-        background: white;
-        border-radius: 15px;
-        padding: 1rem 1.25rem;
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-        z-index: 1060;
-        transform: translateX(400px);
-        transition: transform 0.3s ease;
-        max-width: 320px;
+    /* Indicador de precisión GPS */
+    #gpsAccuracy {
+        font-size: 0.75rem;
     }
 
-    .notification-toast.show {
-        transform: translateX(0);
+    /* Animación para el estado activo del GPS */
+    .gps-active {
+        animation: pulse-gps 2s infinite;
     }
 
-    .notification-toast.success {
-        border-left: 4px solid var(--success-color);
-    }
-
-    .notification-toast.error {
-        border-left: 4px solid var(--danger-color);
-    }
-
-    .notification-toast.warning {
-        border-left: 4px solid var(--warning-color);
-    }
-
-    .notification-toast.info {
-        border-left: 4px solid var(--primary-color);
-    }
-
-    .speed-display {
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 25px;
-        font-weight: 600;
-        margin-top: 0.5rem;
-    }
-
-    .progress-bar-container {
-        background: rgba(255, 255, 255, 0.2);
-        border-radius: 10px;
-        height: 8px;
-        margin: 0.5rem 0;
-        overflow: hidden;
-    }
-
-    .progress-bar {
-        background: var(--success-color);
-        height: 100%;
-        border-radius: 10px;
-        transition: width 0.3s ease;
-        width: 0%;
-    }
-
-    /* Indicador de conexión */
-    .connection-indicator {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(220, 53, 69, 0.95);
-        color: white;
-        padding: 1rem 1.5rem;
-        border-radius: 15px;
-        z-index: 2000;
-        text-align: center;
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-    }
-
-    /* Animaciones de carga */
-    .loading-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(255, 255, 255, 0.95);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 9999;
-        transition: opacity 0.3s ease;
-    }
-
-    .loading-overlay.hidden {
-        opacity: 0;
-        pointer-events: none;
-    }
-
-    .loading-content {
-        text-align: center;
-        padding: 2rem;
-    }
-
-    .loading-spinner-large {
-        width: 60px;
-        height: 60px;
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid var(--primary-color);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 1rem;
-    }
-
-    @keyframes spin {
+    @keyframes pulse-gps {
         0% {
-            transform: rotate(0deg);
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0.7;
         }
 
         100% {
-            transform: rotate(360deg);
+            opacity: 1;
         }
     }
 
-    /* Marcadores personalizados */
-    .custom-marker {
+    /* Controles del mapa */
+    #mapControls .btn {
+        width: 40px;
+        height: 40px;
+        margin-bottom: 2px;
+        border: 1px solid #ddd;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(5px);
+    }
+
+    #mapControls .btn:hover {
+        background: rgba(255, 255, 255, 1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Loading spinner */
+    #mapLoading {
+        z-index: 999;
+    }
+
+    /* Panel de navegación turn-by-turn mejorado */
+    #navigationPanel {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+        border-bottom: 3px solid rgba(255, 255, 255, 0.3);
+    }
+
+    #navigationPanel.arrival {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+        animation: pulse-success 2s infinite;
+    }
+
+    @keyframes pulse-success {
+        0% {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        50% {
+            opacity: 0.9;
+            transform: scale(1.02);
+        }
+
+        100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+
+    #navigationPanelMinimized {
+        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+
+    #navigationPanelMinimized:hover {
+        background: rgba(0, 123, 255, 0.9) !important;
+        transform: translateY(1px);
+    }
+
+    #turnIcon {
+        min-width: 40px;
+        text-align: center;
+    }
+
+    /* Mejoras para las instrucciones */
+    .navigation-instruction {
+        font-weight: bold;
+        font-size: 1.1rem;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        transition: all 0.3s ease;
+    }
+
+    .navigation-distance {
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+
+    .instruction-change {
+        animation: highlight-instruction 1s ease;
+    }
+
+    @keyframes highlight-instruction {
+        0% {
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: scale(1);
+        }
+
+        50% {
+            background-color: rgba(255, 255, 255, 0.4);
+            transform: scale(1.02);
+        }
+
+        100% {
+            background-color: transparent;
+            transform: scale(1);
+        }
+    }
+
+    /* Mejoras para iconos de dirección */
+    .direction-icon {
+        transition: transform 0.3s ease;
+    }
+
+    .turn-animation {
+        animation: turn-pulse 0.5s ease;
+    }
+
+    @keyframes turn-pulse {
+        0% {
+            transform: scale(1);
+        }
+
+        50% {
+            transform: scale(1.2);
+        }
+
+        100% {
+            transform: scale(1);
+        }
+    }
+
+    /* Botón de voz */
+    #toggleVoiceBtn {
+        margin-top: 2px;
+        width: 40px;
+        height: 40px;
+        border: 1px solid #ddd;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(5px);
+    }
+
+    #toggleVoiceBtn:hover {
+        background: rgba(255, 255, 255, 1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .voice-active {
+        background: rgba(0, 123, 255, 0.1) !important;
+        border-color: #007bff !important;
+        animation: pulse-voice 2s infinite;
+    }
+
+    @keyframes pulse-voice {
+        0% {
+            box-shadow: 0 0 0 0 rgba(0, 123, 255, 0.4);
+        }
+
+        70% {
+            box-shadow: 0 0 0 8px rgba(0, 123, 255, 0);
+        }
+
+        100% {
+            box-shadow: 0 0 0 0 rgba(0, 123, 255, 0);
+        }
+    }
+
+    /* Estilos para próximas instrucciones */
+    #upcomingInstructions {
+        max-height: 120px;
+        overflow-y: auto;
+    }
+
+    #upcomingInstructions::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    #upcomingInstructions::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 2px;
+    }
+
+    /* Indicadores de progreso */
+    .progress {
+        background-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .progress-bar {
+        transition: width 0.5s ease;
+    }
+
+    /* Botones de control */
+    .navigation-control-btn {
+        transition: all 0.2s ease;
+    }
+
+    .navigation-control-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Indicador de precisión de navegación */
+    .navigation-accuracy {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.7rem;
+    }
+
+    .accuracy-high {
+        background: rgba(40, 167, 69, 0.8);
+    }
+
+    .accuracy-medium {
+        background: rgba(255, 193, 7, 0.8);
+    }
+
+    .accuracy-low {
+        background: rgba(220, 53, 69, 0.8);
+    }
+
+    /* Mejor visibilidad en pantallas pequeñas */
+    @media (max-width: 576px) {
+        #navigationOverlay {
+            font-size: 0.8rem;
+            padding: 0.5rem;
+            max-width: 150px;
+        }
+
+        .fuel-options {
+            gap: 5px;
+        }
+
+        .fuel-bar {
+            width: 25px;
+            height: 50px;
+        }
+
+        .fuel-label {
+            min-width: 50px;
+            padding: 5px;
+        }
+
+        #navigationPanel {
+            padding: 1.2rem;
+            border-radius: 0;
+            margin: 0;
+        }
+
+        .navigation-instruction {
+            font-size: 1.2rem;
+            line-height: 1.3;
+        }
+
+        .navigation-distance {
+            font-size: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        #turnIcon {
+            font-size: 2rem;
+            margin-right: 1rem;
+            min-width: 50px;
+        }
+    }
+
+    /* Estilos para pantalla completa */
+    .modal-fullscreen .modal-body {
+        padding: 0 !important;
+    }
+
+    /* Marcadores del mapa */
+    .route-marker {
         background: white;
         border-radius: 50%;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        width: 30px;
+        height: 30px;
         display: flex;
         align-items: center;
         justify-content: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
 
-    .custom-position-marker {
+    .position-marker {
         background: #007bff;
         border: 3px solid white;
         border-radius: 50%;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        width: 20px;
+        height: 20px;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: white;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         animation: pulse-position 2s infinite;
     }
 
@@ -891,303 +925,179 @@
         }
     }
 
-    .route-marker {
-        background: white;
-        border-radius: 50%;
-        width: 30px;
-        height: 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    /* Mejoras de accesibilidad */
+    .btn:focus {
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
     }
 
-    /* Responsive design mejorado */
-    @media (max-width: 768px) {
-        .navigation-header {
-            padding: 0.5rem;
-        }
-
-        .route-info {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.25rem;
-        }
-
-        .navigation-controls {
-            align-self: flex-end;
-        }
-
-        .side-panel {
-            width: 100%;
-            right: -100%;
-        }
-
-        .smart-overlay {
-            max-width: calc(100vw - 40px);
-            left: 10px;
-            right: 10px;
-            top: 10px;
-        }
-
-        .turn-panel {
-            left: 10px;
-            right: 10px;
-            bottom: 80px;
-        }
-
-        .map-controls {
-            bottom: 160px;
-            left: 10px;
-        }
-
-        .fab-container {
-            bottom: 10px;
-            right: 10px;
-        }
-
-        .notification-toast {
-            right: 10px;
-            left: 10px;
-            max-width: none;
-        }
+    /* Indicador de conexión */
+    #connectionStatus {
+        transition: all 0.3s ease;
     }
 
-    /* Mejoras para dispositivos táctiles */
-    @media (hover: none) and (pointer: coarse) {
-
-        .btn,
-        .fab,
-        .map-control-btn {
-            min-height: 44px;
-            min-width: 44px;
-        }
-
-        .fuel-option {
-            padding: 0.75rem;
-        }
-
-        .navigation-controls button {
-            padding: 0.5rem 0.75rem;
-        }
-    }
-
-    /* Optimizaciones para pantallas pequeñas */
-    @media (max-width: 480px) {
-        .smart-overlay {
-            max-width: calc(100vw - 20px);
-            left: 10px;
-            right: 10px;
-        }
-
-        .turn-panel {
-            left: 10px;
-            right: 10px;
-            padding: 1rem;
-        }
-
-        .turn-icon {
-            font-size: 2rem;
-            min-width: 40px;
-        }
-
-        .fuel-options {
-            gap: 0.5rem;
-        }
-
+    /* Estilos para modo nocturno (opcional) */
+    @media (prefers-color-scheme: dark) {
         .fuel-gauge {
-            height: 50px;
-        }
-    }
-
-    /* Tema oscuro */
-    .dark-theme {
-        --primary-color: #4dabf7;
-        --success-color: #51cf66;
-        --warning-color: #ffd43b;
-        --danger-color: #ff6b6b;
-        --dark-color: #f8f9fa;
-        --light-color: #212529;
-    }
-
-    .dark-theme body {
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-    }
-
-    .dark-theme .navigation-header {
-        background: rgba(33, 37, 41, 0.95);
-    }
-
-    .dark-theme .route-title {
-        color: var(--dark-color);
-    }
-
-    .dark-theme .side-panel {
-        background: #343a40;
-        color: #f8f9fa;
-    }
-
-    .dark-theme .smart-overlay {
-        background: rgba(33, 37, 41, 0.95);
-        color: #f8f9fa;
-    }
-
-    .dark-theme .notification-toast {
-        background: #343a40;
-        color: #f8f9fa;
-    }
-
-    .dark-theme .modal-content {
-        background: #343a40;
-        color: #f8f9fa;
-    }
-
-    .dark-theme .bg-light {
-        background: #495057 !important;
-        color: #f8f9fa;
-    }
-
-    .dark-theme .fuel-selector {
-        background: #495057;
-    }
-
-    /* Animaciones adicionales */
-    .bounce-in {
-        animation: bounceIn 0.6s ease;
-    }
-
-    @keyframes bounceIn {
-        0% {
-            transform: scale(0.3);
-            opacity: 0;
+            background: #2d3748;
+            border-color: #4a5568;
         }
 
-        50% {
-            transform: scale(1.05);
+        .fuel-label:hover {
+            background-color: rgba(66, 153, 225, 0.1);
         }
 
-        70% {
-            transform: scale(0.9);
+        #navigationOverlay {
+            background: rgba(45, 55, 72, 0.9) !important;
+            color: white;
         }
-
-        100% {
-            transform: scale(1);
-            opacity: 1;
-        }
-    }
-
-    .fade-in {
-        animation: fadeIn 0.5s ease;
-    }
-
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    /* Estados de carga */
-    .loading-spinner {
-        display: inline-block;
-        width: 20px;
-        height: 20px;
-        border: 2px solid #f3f3f3;
-        border-top: 2px solid var(--primary-color);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
     }
 </style>
 {% endblock %}
-
 {% block extra_js %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    // Variables globales del sistema de navegación inteligente
-    let map = null;
+    // ===== VARIABLES GLOBALES MEJORADAS =====
     let gpsActive = false;
-    let currentPosition = null;
-    let routeProgress = 0;
-    let startTime = new Date('{{ completion.started_at.isoformat() }}');
-    let traveledDistance = 0;
-    let speedHistory = [];
-    let isOverlayMinimized = false;
     let gpsWatchId = null;
-    let mapType = 'street';
-    let navigationSession = null;
-    let lastUpdateTime = 0;
-    let batteryLevel = 100;
-    let trackingPoints = [];
     let lastPosition = null;
-    let stopsCount = 0;
-    let gpsPointsCount = 0;
+    let map = null;
+    let routeLayer = null;
+    let positionMarker = null;
+    let fullscreenMap = null;
+    let startTime = new Date('{{ completion.started_at.isoformat() }}');
+    let elapsedInterval = null;
+    let traveledDistance = 0;
+    let previousPosition = null;
+    let currentMapType = 'street';
 
-    // Configuración avanzada de GPS
-    const GPS_CONFIG = {
-        enableHighAccuracy: true,
-        timeout: 30000,
-        maximumAge: 60000,
-        minDistance: 5, // metros mínimos para registrar punto
-        minTime: 10, // segundos mínimos entre puntos
-        batteryOptimization: true
-    };
+    // Variables para tracking
+    let trackingPoints = [];
+    let lastTrackingUpdate = null;
 
-    // Inicialización del sistema
-    document.addEventListener('DOMContentLoaded', function () {
-        console.log('=== INICIANDO SISTEMA DE NAVEGACIÓN INTELIGENTE ===');
-        showLoadingOverlay();
+    // === NUEVAS VARIABLES PARA NAVEGACIÓN MEJORADA ===
+    let currentInstructionIndex = 0;
+    let navigationInstructions = [];
+    let nextWaypoint = null;
+    let isNavigationActive = false;
+    let currentHeading = 0;
+    let voiceEnabled = false;
+    let routeCoordinates = [];
 
-        setTimeout(() => {
-            initializeIntelligentNavigation();
-            hideLoadingOverlay();
-        }, 2000);
+    $(document).ready(function () {
+        console.log('Sistema de navegación mejorado cargado para móvil');
+
+        // Inicializar mapa
+        initializeMap();
+
+        // Inicializar contador de tiempo
+        startElapsedTimer();
+
+        // Handler para activar/desactivar GPS
+        $('#toggleGpsBtn').on('click', function () {
+            if (gpsActive) {
+                stopGPS();
+            } else {
+                startGPS();
+            }
+        });
+
+        // Handler para completar ruta
+        $('#completeRouteBtn').on('click', function (e) {
+            e.preventDefault();
+            completeRoute();
+        });
+
+        // Verificar soporte de geolocalización
+        if (!navigator.geolocation) {
+            showToast('Tu navegador no soporta geolocalización', 'warning');
+            $('#toggleGpsBtn').prop('disabled', true).html('<i class="fas fa-exclamation-triangle me-2"></i>GPS No Disponible');
+        }
+
+        // Manejar visibilidad de la página
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Manejar conexión de red
+        window.addEventListener('online', handleConnectionChange);
+        window.addEventListener('offline', handleConnectionChange);
+
+        // Auto-activar GPS si es posible
+        if (navigator.geolocation && window.location.search.includes('auto_gps=true')) {
+            setTimeout(startGPS, 1000);
+        }
+
+        // Configurar modal de completar ruta
+        $('#completeModal').on('show.bs.modal', function () {
+            updateTripSummary();
+        });
+
+        // === NUEVOS CONTROLES DE NAVEGACIÓN ===
+
+        // Event listeners para controles adicionales
+        $(document).on('click', '#minimizeNavigationBtn', toggleNavigationPanel);
+        $(document).on('click', '#navigationPanelMinimized', toggleNavigationPanel);
+
+        // Botón de mutear navegación
+        $(document).on('click', '#muteNavigationBtn', function () {
+            voiceEnabled = !voiceEnabled;
+
+            const icon = $(this).find('i');
+            if (voiceEnabled) {
+                icon.removeClass('fa-volume-mute').addClass('fa-volume-up');
+                $(this).removeClass('btn-outline-light').addClass('btn-light');
+                showNavigationToast('Voz activada', 'info');
+            } else {
+                icon.removeClass('fa-volume-up').addClass('fa-volume-mute');
+                $(this).removeClass('btn-light').addClass('btn-outline-light');
+                if (window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                }
+                showNavigationToast('Voz desactivada', 'info');
+            }
+        });
+
+        // Detectar cuando el usuario sale de la app
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden && isNavigationActive) {
+                console.log('App en segundo plano, manteniendo navegación activa');
+            } else if (!document.hidden && isNavigationActive) {
+                console.log('App en primer plano, verificando navegación');
+                if (navigationInstructions.length > 0 && lastPosition) {
+                    updateNavigationInstructions(lastPosition);
+                }
+            }
+        });
     });
 
-    function initializeIntelligentNavigation() {
+    function initializeMap() {
         try {
-            // Inicializar componentes principales
-            initializeMap();
-            startElapsedTimer();
-            checkNetworkStatus();
-            requestNotificationPermission();
-            monitorBattery();
+            $('#mapLoading').show();
 
-            // Inicializar sesión de navegación
-            initializeNavigationSession();
+            // Inicializar el mapa
+            map = L.map('navigationMap', {
+                zoomControl: true,
+                attributionControl: false
+            }).setView([-3.8167, -78.7500], 13);
 
-            // Configurar eventos
-            setupEventListeners();
+            // Añadir capa de tiles
+            updateMapLayer();
 
-            console.log('✅ Sistema de navegación inteligente inicializado');
-            showNotification('Sistema de navegación listo', 'success');
+            // Cargar la ruta desde el backend
+            loadRouteData();
+
+            // Ocultar loading después de un tiempo
+            setTimeout(() => {
+                $('#mapLoading').hide();
+            }, 2000);
 
         } catch (error) {
-            console.error('❌ Error inicializando navegación:', error);
-            showNotification('Error inicializando sistema de navegación', 'error');
+            console.error('Error initializing map:', error);
+            $('#mapLoading').html('<div class="text-danger">Error cargando mapa</div>');
         }
     }
 
-    // Inicializar mapa con mejoras
-    function initializeMap() {
-        map = L.map('navigationMap', {
-            zoomControl: false,
-            attributionControl: false
-        }).setView([-3.8167, -78.7500], 14);
-
-        updateMapLayer();
-        loadRouteData();
-
-        console.log('✅ Mapa inicializado');
-    }
-
-    // Actualizar capa del mapa
     function updateMapLayer() {
+        // Limpiar capas existentes
         map.eachLayer(function (layer) {
             if (layer._url) {
                 map.removeLayer(layer);
@@ -1195,7 +1105,8 @@
         });
 
         let tileUrl, attribution;
-        switch (mapType) {
+
+        switch (currentMapType) {
             case 'satellite':
                 tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
                 attribution = '© Esri';
@@ -1204,144 +1115,1546 @@
                 tileUrl = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
                 attribution = '© OpenTopoMap';
                 break;
-            default:
+            default: // street
                 tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-                attribution = '© OpenStreetMap';
+                attribution = '© OpenStreetMap contributors';
         }
 
         L.tileLayer(tileUrl, {
             maxZoom: 19,
+            detectRetina: true,
             attribution: attribution
         }).addTo(map);
     }
 
-    // Cargar datos de ruta
+    // === FUNCIÓN MEJORADA PARA CARGAR DATOS DE RUTA ===
     function loadRouteData() {
-        fetch('/api/route/navigation-data/{{ route.id }}')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.coordinates) {
-                    displayRoute(data.coordinates);
-                    console.log(`✅ Ruta cargada: ${data.coordinates.length} puntos`);
+        console.log('Loading real route data for route ID: {{ route.id }}');
+
+        // Cargar la ruta real desde el servidor
+        $.ajax({
+            url: '/api/route/navigation-data/{{ route.id }}',
+            method: 'GET',
+            timeout: 10000,
+            success: function (response) {
+                if (response.coordinates && response.coordinates.length > 0) {
+                    console.log('Route coordinates loaded:', response.coordinates.length, 'points');
+                    routeCoordinates = response.coordinates;
+                    displayRoute(response.coordinates);
+
+                    // === INICIALIZAR NAVEGACIÓN MEJORADA ===
+                    initializeEnhancedNavigation(response.coordinates);
+
+                    if (response.distance) {
+                        console.log('Route distance:', response.distance, 'meters');
+                    }
                 } else {
-                    console.warn('⚠️ No se pudieron cargar coordenadas de ruta');
-                    loadDemoRoute();
+                    console.warn('No coordinates found in route data');
+                    loadRouteFromGPXFile();
                 }
-            })
-            .catch(error => {
-                console.error('❌ Error cargando ruta:', error);
-                loadDemoRoute();
+            },
+            error: function (xhr, status, error) {
+                console.warn('Failed to load route from API, trying GPX file method');
+                loadRouteFromGPXFile();
+            }
+        });
+    }
+
+    function loadRouteFromGPXFile() {
+        // Intentar cargar desde el archivo GPX de la ruta
+        if ('{{ route.gpx_path }}') {
+            console.log('Attempting to load GPX file: {{ route.gpx_path }}');
+
+            $.ajax({
+                url: '/api/route/gpx-coordinates/{{ route.id }}',
+                method: 'GET',
+                timeout: 10000,
+                success: function (response) {
+                    if (response.coordinates && response.coordinates.length > 0) {
+                        console.log('GPX coordinates loaded:', response.coordinates.length, 'points');
+                        routeCoordinates = response.coordinates;
+                        displayRoute(response.coordinates);
+                        initializeEnhancedNavigation(response.coordinates);
+                    } else {
+                        console.warn('No coordinates in GPX response');
+                        loadRouteFromMap();
+                    }
+                },
+                error: function () {
+                    console.warn('Failed to load GPX coordinates, trying map file');
+                    loadRouteFromMap();
+                }
             });
+        } else {
+            loadRouteFromMap();
+        }
     }
 
-    // Cargar ruta de demostración
-    function loadDemoRoute() {
-        const routeCoordinates = [
-            [-3.8167, -78.7500],
-            [-3.8170, -78.7503],
-            [-3.8175, -78.7508],
-            [-3.8180, -78.7515],
-            [-3.8185, -78.7520],
-            [-3.8190, -78.7525],
-            [-3.8195, -78.7530]
-        ];
+    function loadRouteFromMap() {
+        // Cargar el mapa HTML de la ruta y extraer coordenadas
+        console.log('Loading route from map file: {{ route.file_path }}');
 
-        displayRoute(routeCoordinates);
-        console.log('✅ Ruta de demostración cargada');
+        $.ajax({
+            url: '/routes/{{ route.file_path.split("/")[-1] if route.file_path else "" }}',
+            method: 'GET',
+            timeout: 15000,
+            success: function (mapHtml) {
+                const coordinates = extractCoordinatesFromMap(mapHtml);
+                if (coordinates && coordinates.length > 0) {
+                    console.log('Coordinates extracted from map:', coordinates.length, 'points');
+                    routeCoordinates = coordinates;
+                    displayRoute(coordinates);
+                    initializeEnhancedNavigation(coordinates);
+                } else {
+                    console.error('Could not extract coordinates from map file');
+                    showNoRouteError();
+                }
+            },
+            error: function () {
+                console.error('Failed to load route map file');
+                showNoRouteError();
+            }
+        });
     }
 
-    // Mostrar ruta en el mapa
+    function extractCoordinatesFromMap(mapHtml) {
+        try {
+            // Buscar coordenadas en el HTML del mapa
+            const polylineRegex = /L\.polyline\(\[(.*?)\]/s;
+            const match = mapHtml.match(polylineRegex);
+
+            if (match && match[1]) {
+                const coordsText = match[1];
+                const coordPairs = coordsText.match(/\[([-\d.]+),\s*([-\d.]+)\]/g);
+
+                if (coordPairs) {
+                    const coordinates = coordPairs.map(pair => {
+                        const nums = pair.match(/([-\d.]+)/g);
+                        return [parseFloat(nums[0]), parseFloat(nums[1])];
+                    });
+
+                    return coordinates;
+                }
+            }
+
+            // Método alternativo: buscar en el JavaScript del mapa
+            const jsRegex = /var\s+\w+\s*=\s*\[(.*?)\];/s;
+            const jsMatch = mapHtml.match(jsRegex);
+
+            if (jsMatch && jsMatch[1]) {
+                try {
+                    const coords = JSON.parse('[' + jsMatch[1] + ']');
+                    if (Array.isArray(coords) && coords.length > 0) {
+                        return coords;
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse coordinates from JS:', e);
+                }
+            }
+
+            return null;
+        } catch (error) {
+            console.error('Error extracting coordinates:', error);
+            return null;
+        }
+    }
+
+    function showNoRouteError() {
+        showToast('No se pudo cargar la ruta. Contacta al coordinador.', 'error');
+
+        // Mostrar mensaje en el mapa
+        $('#mapLoading').html(`
+            <div class="text-center p-4">
+                <i class="fas fa-exclamation-triangle text-warning fa-3x mb-3"></i>
+                <h6>Ruta no disponible</h6>
+                <p class="text-muted">No se pudieron cargar los datos de la ruta.<br>
+                Contacta al coordinador para resolver este problema.</p>
+                <button class="btn btn-primary btn-sm" onclick="loadRouteData()">
+                    <i class="fas fa-redo me-1"></i>Reintentar
+                </button>
+            </div>
+        `);
+    }
+
     function displayRoute(coordinates) {
         if (!map || !coordinates || coordinates.length === 0) return;
 
         try {
+            // Limpiar capa anterior si existe
+            if (routeLayer) {
+                map.removeLayer(routeLayer);
+            }
+
             // Crear polyline de la ruta
-            const routeLine = L.polyline(coordinates, {
+            routeLayer = L.polyline(coordinates, {
                 color: '#007bff',
-                weight: 5,
+                weight: 4,
                 opacity: 0.8
             }).addTo(map);
 
-            // Marcadores de inicio y fin
-            L.marker(coordinates[0], {
-                icon: L.divIcon({
-                    html: '<div class="route-marker"><i class="fas fa-play" style="color: #28a745; font-size: 1.2rem;"></i></div>',
-                    className: 'custom-marker',
-                    iconSize: [30, 30]
-                })
-            }).addTo(map).bindPopup('Inicio de ruta');
+            // Ajustar vista del mapa a la ruta
+            map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
 
-            L.marker(coordinates[coordinates.length - 1], {
-                icon: L.divIcon({
-                    html: '<div class="route-marker"><i class="fas fa-flag-checkered" style="color: #dc3545; font-size: 1.2rem;"></i></div>',
-                    className: 'custom-marker',
-                    iconSize: [30, 30]
-                })
-            }).addTo(map).bindPopup('Destino');
+            // Añadir marcadores de inicio y fin
+            if (coordinates.length > 1) {
+                L.marker(coordinates[0], {
+                    icon: L.divIcon({
+                        html: '<div class="route-marker"><i class="fas fa-play text-success"></i></div>',
+                        className: 'route-marker-start',
+                        iconSize: [30, 30]
+                    })
+                }).addTo(map).bindPopup('Inicio de ruta');
 
-            // Ajustar vista del mapa
-            map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+                L.marker(coordinates[coordinates.length - 1], {
+                    icon: L.divIcon({
+                        html: '<div class="route-marker"><i class="fas fa-flag-checkered text-danger"></i></div>',
+                        className: 'route-marker-end',
+                        iconSize: [30, 30]
+                    })
+                }).addTo(map).bindPopup('Fin de ruta');
+            }
 
         } catch (error) {
             console.error('Error displaying route:', error);
         }
     }
 
-    // Inicializar sesión de navegación
-    async function initializeNavigationSession() {
-        try {
-            const response = await fetch('/api/navigation/start-session', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({
-                    route_id: {{ route.id }},
-                vehicle_id: {{ completion.vehicle.id }},
-        fuel_level: { { completion.fuel_start } }
-    })
+    // === NAVEGACIÓN MEJORADA ===
+
+    // Función para generar instrucciones de navegación
+    function generateNavigationInstructions(routeCoordinates, currentPosition) {
+        const instructions = [];
+
+        if (!routeCoordinates || routeCoordinates.length < 2) {
+            return [{
+                instruction: "Mantén rumbo por la ruta planificada",
+                distance: 0,
+                type: "continue",
+                coordinate: null
+            }];
+        }
+
+        // Encontrar el punto más cercano en la ruta
+        let closestPointIndex = findClosestPointOnRoute(currentPosition, routeCoordinates);
+
+        // Generar instrucciones desde el punto actual
+        for (let i = closestPointIndex; i < routeCoordinates.length - 1; i++) {
+            const currentPoint = routeCoordinates[i];
+            const nextPoint = routeCoordinates[i + 1];
+
+            // Calcular distancia al siguiente punto
+            const distance = calculateDistance(
+                currentPoint[0], currentPoint[1],
+                nextPoint[0], nextPoint[1]
+            ) * 1000; // Convertir a metros
+
+            // Determinar tipo de instrucción
+            const instructionType = determineInstructionType(
+                routeCoordinates[Math.max(0, i - 1)],
+                currentPoint,
+                nextPoint
+            );
+
+            // Generar texto de instrucción
+            const instructionText = generateInstructionText(instructionType, distance);
+
+            instructions.push({
+                instruction: instructionText,
+                distance: Math.round(distance),
+                type: instructionType,
+                coordinate: nextPoint,
+                index: i
             });
 
-    const data = await response.json();
-
-    if (data.success) {
-        navigationSession = data;
-        console.log('✅ Sesión de navegación inicializada:', data.session_id);
-    } else {
-        console.warn('⚠️ No se pudo inicializar sesión:', data.error);
-    }
-        } catch (error) {
-        console.error('❌ Error inicializando sesión:', error);
-    }
-    }
-
-    // Control de GPS inteligente
-    function toggleGPS() {
-        if (gpsActive) {
-            stopGPS();
-        } else {
-            startGPS();
+            if (instructions.length >= 8) break; // Limitar instrucciones
         }
+
+        // Instrucción final
+        if (instructions.length > 0) {
+            instructions.push({
+                instruction: "Has llegado a tu destino",
+                distance: 0,
+                type: "destination",
+                coordinate: routeCoordinates[routeCoordinates.length - 1],
+                index: routeCoordinates.length - 1
+            });
+        }
+
+        return instructions;
+    }
+
+    function findClosestPointOnRoute(currentPosition, routeCoordinates) {
+        let minDistance = Infinity;
+        let closestIndex = 0;
+
+        for (let i = 0; i < routeCoordinates.length; i++) {
+            const distance = calculateDistance(
+                currentPosition.lat, currentPosition.lng,
+                routeCoordinates[i][0], routeCoordinates[i][1]
+            );
+
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestIndex = i;
+            }
+        }
+
+        return closestIndex;
+    }
+
+    function determineInstructionType(prevPoint, currentPoint, nextPoint) {
+        if (!prevPoint || !currentPoint || !nextPoint) {
+            return "continue";
+        }
+
+        // Calcular ángulos para determinar giros
+        const bearing1 = calculateBearing(prevPoint[0], prevPoint[1], currentPoint[0], currentPoint[1]);
+        const bearing2 = calculateBearing(currentPoint[0], currentPoint[1], nextPoint[0], nextPoint[1]);
+
+        let angleDiff = bearing2 - bearing1;
+
+        // Normalizar ángulo
+        if (angleDiff > 180) angleDiff -= 360;
+        if (angleDiff < -180) angleDiff += 360;
+
+        // Determinar tipo de giro
+        if (Math.abs(angleDiff) < 15) {
+            return "continue";
+        } else if (angleDiff > 15 && angleDiff < 75) {
+            return "turn_slight_right";
+        } else if (angleDiff >= 75 && angleDiff < 105) {
+            return "turn_right";
+        } else if (angleDiff >= 105) {
+            return "turn_sharp_right";
+        } else if (angleDiff < -15 && angleDiff > -75) {
+            return "turn_slight_left";
+        } else if (angleDiff <= -75 && angleDiff > -105) {
+            return "turn_left";
+        } else if (angleDiff <= -105) {
+            return "turn_sharp_left";
+        }
+
+        return "continue";
+    }
+
+    function calculateBearing(lat1, lng1, lat2, lng2) {
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const lat1Rad = lat1 * Math.PI / 180;
+        const lat2Rad = lat2 * Math.PI / 180;
+
+        const y = Math.sin(dLng) * Math.cos(lat2Rad);
+        const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+
+        const bearing = Math.atan2(y, x) * 180 / Math.PI;
+        return (bearing + 360) % 360;
+    }
+
+    function generateInstructionText(type, distance) {
+        const distanceText = distance > 1000 ?
+            `${(distance / 1000).toFixed(1)} km` :
+            `${distance} metros`;
+
+        switch (type) {
+            case "continue":
+                if (distance > 500) {
+                    return `Continúa recto por ${distanceText}`;
+                } else {
+                    return `Sigue adelante ${distanceText}`;
+                }
+
+            case "turn_slight_right":
+                return `En ${distanceText}, gira ligeramente a la derecha`;
+
+            case "turn_right":
+                return `En ${distanceText}, gira a la derecha`;
+
+            case "turn_sharp_right":
+                return `En ${distanceText}, gira fuertemente a la derecha`;
+
+            case "turn_slight_left":
+                return `En ${distanceText}, gira ligeramente a la izquierda`;
+
+            case "turn_left":
+                return `En ${distanceText}, gira a la izquierda`;
+
+            case "turn_sharp_left":
+                return `En ${distanceText}, gira fuertemente a la izquierda`;
+
+            case "destination":
+                return "Has llegado a tu destino";
+
+            default:
+                return `Continúa por la ruta ${distanceText}`;
+        }
+    }
+
+    // === INICIALIZAR NAVEGACIÓN MEJORADA ===
+    function initializeEnhancedNavigation(routeCoordinates) {
+        if (!routeCoordinates || routeCoordinates.length < 2) {
+            console.warn('No hay coordenadas suficientes para navegación');
+            return;
+        }
+
+        console.log('Inicializando navegación mejorada con', routeCoordinates.length, 'puntos');
+
+        const dummyStartPosition = {
+            lat: routeCoordinates[0][0],
+            lng: routeCoordinates[0][1]
+        };
+
+        navigationInstructions = generateNavigationInstructions(routeCoordinates, dummyStartPosition);
+        currentInstructionIndex = 0;
+        isNavigationActive = true;
+
+        console.log('Generadas', navigationInstructions.length, 'instrucciones de navegación');
+
+        if (navigationInstructions.length > 0) {
+            updateNavigationUI(navigationInstructions[0], 0);
+        }
+
+        setupVoiceControls();
+    }
+
+    function setupVoiceControls() {
+        if ('speechSynthesis' in window) {
+            const voiceButton = document.createElement('button');
+            voiceButton.id = 'toggleVoiceBtn';
+            voiceButton.className = 'btn btn-sm btn-outline-secondary';
+            voiceButton.innerHTML = '<i class="fas fa-volume-mute"></i>';
+            voiceButton.title = 'Activar instrucciones de voz';
+
+            voiceButton.onclick = function () {
+                voiceEnabled = !voiceEnabled;
+
+                if (voiceEnabled) {
+                    this.innerHTML = '<i class="fas fa-volume-up"></i>';
+                    this.title = 'Desactivar instrucciones de voz';
+                    this.classList.remove('btn-outline-secondary');
+                    this.classList.add('btn-outline-primary', 'voice-active');
+                    showNavigationToast('Instrucciones de voz activadas', 'info');
+                } else {
+                    this.innerHTML = '<i class="fas fa-volume-mute"></i>';
+                    this.title = 'Activar instrucciones de voz';
+                    this.classList.remove('btn-outline-primary', 'voice-active');
+                    this.classList.add('btn-outline-secondary');
+                    window.speechSynthesis.cancel();
+                    showNavigationToast('Instrucciones de voz desactivadas', 'info');
+                }
+            };
+
+            const mapControls = document.getElementById('mapControls');
+            if (mapControls) {
+                mapControls.appendChild(voiceButton);
+            }
+        }
+    }
+    // === ACTUALIZACIÓN DE NAVEGACIÓN EN TIEMPO REAL ===
+    function updateNavigationInstructions(currentPosition) {
+        if (!isNavigationActive || !navigationInstructions.length) {
+            return;
+        }
+
+        const currentInstruction = navigationInstructions[currentInstructionIndex];
+        if (!currentInstruction || !currentInstruction.coordinate) {
+            return;
+        }
+
+        // Calcular distancia al siguiente waypoint
+        const distanceToNext = calculateDistance(
+            currentPosition.lat, currentPosition.lng,
+            currentInstruction.coordinate[0], currentInstruction.coordinate[1]
+        ) * 1000; // Convertir a metros
+
+        // Actualizar UI con instrucción actual
+        updateNavigationUI(currentInstruction, Math.round(distanceToNext));
+
+        // Verificar si hemos llegado al waypoint actual
+        if (distanceToNext < 50) { // 50 metros de tolerancia
+            currentInstructionIndex++;
+
+            if (currentInstructionIndex < navigationInstructions.length) {
+                const nextInstruction = navigationInstructions[currentInstructionIndex];
+                announceInstruction(nextInstruction);
+                updateNavigationUI(nextInstruction, calculateDistanceToInstruction(currentPosition, nextInstruction));
+                updateUpcomingInstructions();
+                updateNavigationStats(currentPosition);
+            } else {
+                // Llegada al destino
+                announceArrival();
+                isNavigationActive = false;
+            }
+        }
+
+        // Verificar desvío de ruta
+        checkRouteDeviation(currentPosition);
+    }
+
+    function updateNavigationUI(instruction, distance) {
+        // Actualizar panel de navegación móvil
+        const turnIcon = document.getElementById('turnIcon');
+        const turnInstruction = document.getElementById('turnInstruction');
+        const turnDistance = document.getElementById('turnDistance');
+
+        if (turnIcon && turnInstruction && turnDistance) {
+            // Actualizar icono según tipo de instrucción
+            const newIconClass = getInstructionIcon(instruction.type);
+            if (turnIcon.className !== newIconClass) {
+                turnIcon.className = newIconClass;
+                turnIcon.classList.add('turn-animation');
+                setTimeout(() => turnIcon.classList.remove('turn-animation'), 500);
+            }
+
+            // Actualizar texto con animación
+            if (turnInstruction.textContent !== instruction.instruction) {
+                turnInstruction.classList.add('instruction-change');
+                turnInstruction.textContent = instruction.instruction;
+                setTimeout(() => turnInstruction.classList.remove('instruction-change'), 1000);
+            }
+
+            // Actualizar distancia
+            if (distance > 1000) {
+                turnDistance.textContent = `En ${(distance / 1000).toFixed(1)} km`;
+            } else if (distance > 100) {
+                turnDistance.textContent = `En ${distance} metros`;
+            } else if (distance > 0) {
+                turnDistance.textContent = `En ${distance}m`;
+            } else {
+                turnDistance.textContent = "¡Ahora!";
+            }
+        }
+
+        // Actualizar controles de desktop
+        const desktopIcon = document.getElementById('desktopTurnIcon');
+        const desktopInstruction = document.getElementById('desktopTurnInstruction');
+        const desktopDistance = document.getElementById('desktopTurnDistance');
+
+        if (desktopIcon && desktopInstruction && desktopDistance) {
+            desktopIcon.className = getInstructionIcon(instruction.type).replace('fa-2x', '');
+            desktopInstruction.textContent = instruction.instruction;
+
+            if (distance > 1000) {
+                desktopDistance.textContent = `En ${(distance / 1000).toFixed(1)} km`;
+            } else if (distance > 0) {
+                desktopDistance.textContent = `En ${distance} metros`;
+            } else {
+                desktopDistance.textContent = '¡Ahora!';
+            }
+        }
+
+        // Mostrar panel de navegación
+        const navigationPanel = document.getElementById('navigationPanel');
+        if (navigationPanel) {
+            navigationPanel.style.display = 'block';
+
+            // Mostrar controles de navegación en desktop
+            toggleNavigationControls(true);
+
+            // Añadir clase especial si llegamos al destino
+            if (instruction.type === 'destination') {
+                navigationPanel.classList.add('arrival');
+            } else {
+                navigationPanel.classList.remove('arrival');
+            }
+        }
+
+        // Actualizar próximas instrucciones y estadísticas
+        updateUpcomingInstructions();
+        if (lastPosition) {
+            updateNavigationStats(lastPosition);
+        }
+    }
+
+    function getInstructionIcon(type) {
+        const iconMap = {
+            'continue': 'fas fa-arrow-up fa-2x',
+            'turn_slight_right': 'fas fa-arrow-up fa-2x',
+            'turn_right': 'fas fa-arrow-right fa-2x',
+            'turn_sharp_right': 'fas fa-arrow-right fa-2x',
+            'turn_slight_left': 'fas fa-arrow-up fa-2x',
+            'turn_left': 'fas fa-arrow-left fa-2x',
+            'turn_sharp_left': 'fas fa-arrow-left fa-2x',
+            'destination': 'fas fa-flag-checkered fa-2x'
+        };
+
+        return iconMap[type] || 'fas fa-arrow-up fa-2x';
+    }
+
+    function calculateDistanceToInstruction(currentPosition, instruction) {
+        if (!instruction.coordinate) return 0;
+
+        const distance = calculateDistance(
+            currentPosition.lat, currentPosition.lng,
+            instruction.coordinate[0], instruction.coordinate[1]
+        ) * 1000;
+
+        return Math.round(distance);
+    }
+
+    // === SISTEMA DE ANUNCIOS POR VOZ ===
+    function announceInstruction(instruction) {
+        if (!voiceEnabled || !window.speechSynthesis) {
+            return;
+        }
+
+        try {
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(instruction.instruction);
+            utterance.lang = 'es-ES';
+            utterance.rate = 0.9;
+            utterance.volume = 0.8;
+
+            window.speechSynthesis.speak(utterance);
+            showNavigationToast(instruction.instruction, 'info');
+
+        } catch (error) {
+            console.log('No se pudo reproducir anuncio de voz:', error);
+        }
+    }
+
+    function announceArrival() {
+        showNavigationToast('¡Has llegado a tu destino!', 'success');
+
+        if (voiceEnabled && window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance('Has llegado a tu destino');
+            utterance.lang = 'es-ES';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Agregar clase de llegada al panel
+        const navigationPanel = document.getElementById('navigationPanel');
+        if (navigationPanel) {
+            navigationPanel.classList.add('arrival');
+        }
+    }
+
+    // === FUNCIONES AUXILIARES DE UI ===
+
+    function updateUpcomingInstructions() {
+        const upcomingDiv = document.getElementById('upcomingInstructions');
+        if (!upcomingDiv || !navigationInstructions || currentInstructionIndex >= navigationInstructions.length) {
+            return;
+        }
+
+        let html = '';
+        const maxUpcoming = 3;
+
+        for (let i = currentInstructionIndex + 1; i < Math.min(currentInstructionIndex + maxUpcoming + 1, navigationInstructions.length); i++) {
+            const instruction = navigationInstructions[i];
+            const distance = instruction.distance > 1000 ?
+                `${(instruction.distance / 1000).toFixed(1)} km` :
+                `${instruction.distance}m`;
+
+            html += `
+                <div class="d-flex align-items-center mb-1">
+                    <i class="${getInstructionIcon(instruction.type).replace('fa-2x', 'fa-sm')} me-2 text-muted"></i>
+                    <span class="text-muted">${instruction.instruction} (${distance})</span>
+                </div>
+            `;
+        }
+
+        if (html === '') {
+            html = '<div class="text-muted">No hay más instrucciones</div>';
+        }
+
+        upcomingDiv.innerHTML = html;
+    }
+
+    function updateNavigationStats(currentPosition) {
+        if (!navigationInstructions || !routeCoordinates || !currentPosition) {
+            return;
+        }
+
+        // Calcular progreso
+        const totalInstructions = navigationInstructions.length;
+        const completedInstructions = currentInstructionIndex;
+        const progress = totalInstructions > 0 ? Math.round((completedInstructions / totalInstructions) * 100) : 0;
+
+        const progressElement = document.getElementById('navigationProgress');
+        if (progressElement) {
+            progressElement.textContent = `${progress}%`;
+        }
+
+        // Actualizar barra de progreso
+        const progressBar = document.getElementById('routeProgress');
+        if (progressBar) {
+            progressBar.style.width = `${progress}%`;
+        }
+
+        // Calcular distancia restante
+        let remainingDistance = 0;
+        for (let i = currentInstructionIndex; i < navigationInstructions.length; i++) {
+            remainingDistance += navigationInstructions[i].distance || 0;
+        }
+
+        const remainingElement = document.getElementById('remainingDistance');
+        if (remainingElement) {
+            if (remainingDistance > 1000) {
+                remainingElement.textContent = `${(remainingDistance / 1000).toFixed(1)} km`;
+            } else {
+                remainingElement.textContent = `${Math.round(remainingDistance)} m`;
+            }
+        }
+
+        // Calcular ETA (estimación muy básica)
+        const avgSpeed = (lastPosition && lastPosition.speed) ? lastPosition.speed * 3.6 : 30; // km/h
+        const etaHours = (remainingDistance / 1000) / avgSpeed;
+        const etaMinutes = Math.round(etaHours * 60);
+
+        const etaElement = document.getElementById('estimatedArrival');
+        if (etaElement && etaMinutes > 0) {
+            const now = new Date();
+            const eta = new Date(now.getTime() + etaMinutes * 60000);
+            etaElement.textContent = eta.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        }
+    }
+
+    function toggleNavigationControls(show) {
+        const navigationControls = document.getElementById('navigationControls');
+        if (navigationControls) {
+            navigationControls.style.display = show ? 'block' : 'none';
+        }
+    }
+
+    function toggleNavigationPanel() {
+        const panel = document.getElementById('navigationPanel');
+        const miniPanel = document.getElementById('navigationPanelMinimized');
+
+        if (panel && miniPanel) {
+            if (panel.style.display !== 'none') {
+                // Minimizar
+                panel.style.display = 'none';
+                miniPanel.style.display = 'block';
+
+                // Actualizar texto del mini panel
+                const instruction = document.getElementById('turnInstruction');
+                const miniInstruction = document.getElementById('miniInstruction');
+                if (instruction && miniInstruction) {
+                    miniInstruction.textContent = instruction.textContent.substring(0, 20) + '...';
+                }
+            } else {
+                // Maximizar
+                panel.style.display = 'block';
+                miniPanel.style.display = 'none';
+            }
+        }
+    }
+
+    function updateNavigationAccuracy(position) {
+        const accuracy = position.accuracy;
+        let accuracyClass = 'accuracy-low';
+        let accuracyText = 'Baja';
+
+        if (accuracy <= 10) {
+            accuracyClass = 'accuracy-high';
+            accuracyText = 'Alta';
+        } else if (accuracy <= 25) {
+            accuracyClass = 'accuracy-medium';
+            accuracyText = 'Media';
+        }
+
+        const navigationPanel = document.getElementById('navigationPanel');
+        if (navigationPanel) {
+            // Remover indicador anterior
+            const existingIndicator = navigationPanel.querySelector('.navigation-accuracy');
+            if (existingIndicator) {
+                existingIndicator.remove();
+            }
+
+            // Agregar nuevo indicador
+            const accuracyIndicator = document.createElement('div');
+            accuracyIndicator.className = `navigation-accuracy ${accuracyClass}`;
+            accuracyIndicator.textContent = `GPS: ${accuracyText}`;
+            navigationPanel.appendChild(accuracyIndicator);
+        }
+    }
+
+    function checkRouteDeviation(currentPosition) {
+        if (!routeCoordinates || routeCoordinates.length === 0) {
+            return;
+        }
+
+        const closestPoint = findClosestPointOnRoute(currentPosition, routeCoordinates);
+        const distanceToRoute = calculateDistance(
+            currentPosition.lat, currentPosition.lng,
+            routeCoordinates[closestPoint][0], routeCoordinates[closestPoint][1]
+        ) * 1000; // En metros
+
+        // Si estamos a más de 100 metros de la ruta planificada
+        if (distanceToRoute > 100) {
+            console.log(`Desvío detectado: ${distanceToRoute.toFixed(0)}m de la ruta`);
+
+            // Mostrar alerta solo una vez cada 30 segundos
+            const now = Date.now();
+            if (!window.lastDeviationAlert || (now - window.lastDeviationAlert) > 30000) {
+                showNavigationToast('Te has desviado de la ruta planificada', 'warning');
+                window.lastDeviationAlert = now;
+
+                // Recalcular navegación
+                recalculateNavigation(currentPosition, routeCoordinates);
+            }
+        }
+    }
+
+    // === FUNCIONES DE CONTROL DE NAVEGACIÓN ===
+
+    function recalculateFromCurrentPosition() {
+        if (!lastPosition || !routeCoordinates) {
+            showNavigationToast('No hay posición GPS disponible', 'warning');
+            return;
+        }
+
+        showNavigationToast('Recalculando ruta desde tu posición actual...', 'info');
+
+        // Regenerar instrucciones desde posición actual
+        navigationInstructions = generateNavigationInstructions(routeCoordinates, lastPosition);
+        currentInstructionIndex = 0;
+
+        if (navigationInstructions.length > 0) {
+            updateNavigationUI(navigationInstructions[0], calculateDistanceToInstruction(lastPosition, navigationInstructions[0]));
+            showNavigationToast('Ruta recalculada exitosamente', 'success');
+        }
+    }
+
+    function skipCurrentInstruction() {
+        if (!navigationInstructions || currentInstructionIndex >= navigationInstructions.length - 1) {
+            showNavigationToast('No hay instrucciones para saltar', 'warning');
+            return;
+        }
+
+        currentInstructionIndex++;
+        const nextInstruction = navigationInstructions[currentInstructionIndex];
+
+        if (nextInstruction && lastPosition) {
+            updateNavigationUI(nextInstruction, calculateDistanceToInstruction(lastPosition, nextInstruction));
+            showNavigationToast(`Saltando a: ${nextInstruction.instruction}`, 'info');
+        }
+    }
+
+    function toggleNavigation() {
+        isNavigationActive = !isNavigationActive;
+
+        const pauseBtn = document.getElementById('pauseNavigationBtn');
+
+        if (isNavigationActive) {
+            showNavigationToast('Navegación reanudada', 'info');
+            if (pauseBtn) {
+                pauseBtn.innerHTML = '<i class="fas fa-pause me-2"></i>Pausar Navegación';
+                pauseBtn.classList.remove('btn-success');
+                pauseBtn.classList.add('btn-warning');
+            }
+        } else {
+            showNavigationToast('Navegación pausada', 'warning');
+            if (pauseBtn) {
+                pauseBtn.innerHTML = '<i class="fas fa-play me-2"></i>Reanudar Navegación';
+                pauseBtn.classList.remove('btn-warning');
+                pauseBtn.classList.add('btn-success');
+            }
+            if (voiceEnabled) {
+                window.speechSynthesis.cancel();
+            }
+        }
+    }
+
+    function recalculateNavigation(currentPosition, routeCoordinates) {
+        if (!isNavigationActive || !currentPosition || !routeCoordinates) {
+            return;
+        }
+
+        navigationInstructions = generateNavigationInstructions(routeCoordinates, currentPosition);
+        currentInstructionIndex = 0;
+
+        if (navigationInstructions.length > 0) {
+            updateNavigationUI(navigationInstructions[0], calculateDistanceToInstruction(currentPosition, navigationInstructions[0]));
+        }
+    }
+
+    function cleanupNavigation() {
+        isNavigationActive = false;
+        currentInstructionIndex = 0;
+        navigationInstructions = [];
+
+        const turnInstruction = document.getElementById('turnInstruction');
+        const turnDistance = document.getElementById('turnDistance');
+        const navigationPanel = document.getElementById('navigationPanel');
+        const miniPanel = document.getElementById('navigationPanelMinimized');
+
+        if (turnInstruction) turnInstruction.textContent = 'Navegación detenida';
+        if (turnDistance) turnDistance.textContent = '';
+        if (navigationPanel) navigationPanel.style.display = 'none';
+        if (miniPanel) miniPanel.style.display = 'none';
+
+        toggleNavigationControls(false);
+
+        if (voiceEnabled && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+    }
+
+    // === MEJORAR LA FUNCIÓN onGPSSuccess ORIGINAL ===
+    function onGPSSuccess(position) {
+        const coords = position.coords;
+        lastPosition = {
+            lat: coords.latitude,
+            lng: coords.longitude,
+            accuracy: coords.accuracy,
+            speed: coords.speed || 0,
+            heading: coords.heading || 0,
+            timestamp: new Date()
+        };
+
+        console.log('GPS position updated:', lastPosition);
+
+        // Calcular distancia recorrida
+        if (previousPosition) {
+            const distance = calculateDistance(
+                previousPosition.lat, previousPosition.lng,
+                lastPosition.lat, lastPosition.lng
+            );
+
+            if (distance < 0.1) {
+                traveledDistance += distance;
+            }
+        }
+
+        previousPosition = lastPosition;
+
+        // Actualizar UI básica
+        updatePositionDisplay(lastPosition);
+        updateMapPosition(lastPosition);
+        updateStatistics(lastPosition);
+
+        // === NUEVAS CARACTERÍSTICAS DE NAVEGACIÓN ===
+
+        // Actualizar navegación mejorada
+        if (isNavigationActive) {
+            updateNavigationInstructions(lastPosition);
+            updateNavigationAccuracy(position);
+        }
+
+        // Enviar al servidor cada 30 segundos
+        const now = Date.now();
+        if (!lastTrackingUpdate || (now - lastTrackingUpdate) > 30000) {
+            sendPositionUpdate(lastPosition);
+            lastTrackingUpdate = now;
+        }
+
+        // Almacenar punto para el tracking
+        trackingPoints.push({
+            lat: lastPosition.lat,
+            lng: lastPosition.lng,
+            timestamp: lastPosition.timestamp.toISOString(),
+            speed: lastPosition.speed,
+            accuracy: lastPosition.accuracy
+        });
+    }
+
+    function showNavigationToast(message, type = 'info') {
+        const toastEl = $('#gpsToast');
+        const toastBody = $('#gpsToastBody');
+
+        let bgClass = 'bg-primary';
+        let icon = 'fas fa-navigation';
+
+        switch (type) {
+            case 'success':
+                bgClass = 'bg-success text-white';
+                icon = 'fas fa-check-circle';
+                break;
+            case 'warning':
+                bgClass = 'bg-warning';
+                icon = 'fas fa-exclamation-triangle';
+                break;
+            case 'error':
+                bgClass = 'bg-danger text-white';
+                icon = 'fas fa-exclamation-triangle';
+                break;
+        }
+
+        toastEl.removeClass('bg-info bg-success bg-danger bg-warning bg-primary text-white').addClass(bgClass);
+        toastEl.find('.toast-header i').removeClass().addClass(icon + ' me-2');
+        toastBody.text(message);
+
+        const toast = new bootstrap.Toast(toastEl[0], {
+            delay: 4000
+        });
+        toast.show();
+    }
+
+    // === ACTUALIZACIÓN DE NAVEGACIÓN EN TIEMPO REAL ===
+    function updateNavigationInstructions(currentPosition) {
+        if (!isNavigationActive || !navigationInstructions.length) {
+            return;
+        }
+
+        const currentInstruction = navigationInstructions[currentInstructionIndex];
+        if (!currentInstruction || !currentInstruction.coordinate) {
+            return;
+        }
+
+        // Calcular distancia al siguiente waypoint
+        const distanceToNext = calculateDistance(
+            currentPosition.lat, currentPosition.lng,
+            currentInstruction.coordinate[0], currentInstruction.coordinate[1]
+        ) * 1000; // Convertir a metros
+
+        // Actualizar UI con instrucción actual
+        updateNavigationUI(currentInstruction, Math.round(distanceToNext));
+
+        // Verificar si hemos llegado al waypoint actual
+        if (distanceToNext < 50) { // 50 metros de tolerancia
+            currentInstructionIndex++;
+
+            if (currentInstructionIndex < navigationInstructions.length) {
+                const nextInstruction = navigationInstructions[currentInstructionIndex];
+                announceInstruction(nextInstruction);
+                updateNavigationUI(nextInstruction, calculateDistanceToInstruction(currentPosition, nextInstruction));
+                updateUpcomingInstructions();
+                updateNavigationStats(currentPosition);
+            } else {
+                // Llegada al destino
+                announceArrival();
+                isNavigationActive = false;
+            }
+        }
+
+        // Verificar desvío de ruta
+        checkRouteDeviation(currentPosition);
+    }
+
+    function updateNavigationUI(instruction, distance) {
+        // Actualizar panel de navegación móvil
+        const turnIcon = document.getElementById('turnIcon');
+        const turnInstruction = document.getElementById('turnInstruction');
+        const turnDistance = document.getElementById('turnDistance');
+
+        if (turnIcon && turnInstruction && turnDistance) {
+            // Actualizar icono según tipo de instrucción
+            const newIconClass = getInstructionIcon(instruction.type);
+            if (turnIcon.className !== newIconClass) {
+                turnIcon.className = newIconClass;
+                turnIcon.classList.add('turn-animation');
+                setTimeout(() => turnIcon.classList.remove('turn-animation'), 500);
+            }
+
+            // Actualizar texto con animación
+            if (turnInstruction.textContent !== instruction.instruction) {
+                turnInstruction.classList.add('instruction-change');
+                turnInstruction.textContent = instruction.instruction;
+                setTimeout(() => turnInstruction.classList.remove('instruction-change'), 1000);
+            }
+
+            // Actualizar distancia
+            if (distance > 1000) {
+                turnDistance.textContent = `En ${(distance / 1000).toFixed(1)} km`;
+            } else if (distance > 100) {
+                turnDistance.textContent = `En ${distance} metros`;
+            } else if (distance > 0) {
+                turnDistance.textContent = `En ${distance}m`;
+            } else {
+                turnDistance.textContent = "¡Ahora!";
+            }
+        }
+
+        // Actualizar controles de desktop
+        const desktopIcon = document.getElementById('desktopTurnIcon');
+        const desktopInstruction = document.getElementById('desktopTurnInstruction');
+        const desktopDistance = document.getElementById('desktopTurnDistance');
+
+        if (desktopIcon && desktopInstruction && desktopDistance) {
+            desktopIcon.className = getInstructionIcon(instruction.type).replace('fa-2x', '');
+            desktopInstruction.textContent = instruction.instruction;
+
+            if (distance > 1000) {
+                desktopDistance.textContent = `En ${(distance / 1000).toFixed(1)} km`;
+            } else if (distance > 0) {
+                desktopDistance.textContent = `En ${distance} metros`;
+            } else {
+                desktopDistance.textContent = '¡Ahora!';
+            }
+        }
+
+        // Mostrar panel de navegación
+        const navigationPanel = document.getElementById('navigationPanel');
+        if (navigationPanel) {
+            navigationPanel.style.display = 'block';
+
+            // Mostrar controles de navegación en desktop
+            toggleNavigationControls(true);
+
+            // Añadir clase especial si llegamos al destino
+            if (instruction.type === 'destination') {
+                navigationPanel.classList.add('arrival');
+            } else {
+                navigationPanel.classList.remove('arrival');
+            }
+        }
+
+        // Actualizar próximas instrucciones y estadísticas
+        updateUpcomingInstructions();
+        if (lastPosition) {
+            updateNavigationStats(lastPosition);
+        }
+    }
+
+    function getInstructionIcon(type) {
+        const iconMap = {
+            'continue': 'fas fa-arrow-up fa-2x',
+            'turn_slight_right': 'fas fa-arrow-up fa-2x',
+            'turn_right': 'fas fa-arrow-right fa-2x',
+            'turn_sharp_right': 'fas fa-arrow-right fa-2x',
+            'turn_slight_left': 'fas fa-arrow-up fa-2x',
+            'turn_left': 'fas fa-arrow-left fa-2x',
+            'turn_sharp_left': 'fas fa-arrow-left fa-2x',
+            'destination': 'fas fa-flag-checkered fa-2x'
+        };
+
+        return iconMap[type] || 'fas fa-arrow-up fa-2x';
+    }
+
+    function calculateDistanceToInstruction(currentPosition, instruction) {
+        if (!instruction.coordinate) return 0;
+
+        const distance = calculateDistance(
+            currentPosition.lat, currentPosition.lng,
+            instruction.coordinate[0], instruction.coordinate[1]
+        ) * 1000;
+
+        return Math.round(distance);
+    }
+
+    // === SISTEMA DE ANUNCIOS POR VOZ ===
+    function announceInstruction(instruction) {
+        if (!voiceEnabled || !window.speechSynthesis) {
+            return;
+        }
+
+        try {
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(instruction.instruction);
+            utterance.lang = 'es-ES';
+            utterance.rate = 0.9;
+            utterance.volume = 0.8;
+
+            window.speechSynthesis.speak(utterance);
+            showNavigationToast(instruction.instruction, 'info');
+
+        } catch (error) {
+            console.log('No se pudo reproducir anuncio de voz:', error);
+        }
+    }
+
+    function announceArrival() {
+        showNavigationToast('¡Has llegado a tu destino!', 'success');
+
+        if (voiceEnabled && window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance('Has llegado a tu destino');
+            utterance.lang = 'es-ES';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Agregar clase de llegada al panel
+        const navigationPanel = document.getElementById('navigationPanel');
+        if (navigationPanel) {
+            navigationPanel.classList.add('arrival');
+        }
+    }
+
+    // === FUNCIONES AUXILIARES DE UI ===
+
+    function updateUpcomingInstructions() {
+        const upcomingDiv = document.getElementById('upcomingInstructions');
+        if (!upcomingDiv || !navigationInstructions || currentInstructionIndex >= navigationInstructions.length) {
+            return;
+        }
+
+        let html = '';
+        const maxUpcoming = 3;
+
+        for (let i = currentInstructionIndex + 1; i < Math.min(currentInstructionIndex + maxUpcoming + 1, navigationInstructions.length); i++) {
+            const instruction = navigationInstructions[i];
+            const distance = instruction.distance > 1000 ?
+                `${(instruction.distance / 1000).toFixed(1)} km` :
+                `${instruction.distance}m`;
+
+            html += `
+                <div class="d-flex align-items-center mb-1">
+                    <i class="${getInstructionIcon(instruction.type).replace('fa-2x', 'fa-sm')} me-2 text-muted"></i>
+                    <span class="text-muted">${instruction.instruction} (${distance})</span>
+                </div>
+            `;
+        }
+
+        if (html === '') {
+            html = '<div class="text-muted">No hay más instrucciones</div>';
+        }
+
+        upcomingDiv.innerHTML = html;
+    }
+
+    function updateNavigationStats(currentPosition) {
+        if (!navigationInstructions || !routeCoordinates || !currentPosition) {
+            return;
+        }
+
+        // Calcular progreso
+        const totalInstructions = navigationInstructions.length;
+        const completedInstructions = currentInstructionIndex;
+        const progress = totalInstructions > 0 ? Math.round((completedInstructions / totalInstructions) * 100) : 0;
+
+        const progressElement = document.getElementById('navigationProgress');
+        if (progressElement) {
+            progressElement.textContent = `${progress}%`;
+        }
+
+        // Actualizar barra de progreso
+        const progressBar = document.getElementById('routeProgress');
+        if (progressBar) {
+            progressBar.style.width = `${progress}%`;
+        }
+
+        // Calcular distancia restante
+        let remainingDistance = 0;
+        for (let i = currentInstructionIndex; i < navigationInstructions.length; i++) {
+            remainingDistance += navigationInstructions[i].distance || 0;
+        }
+
+        const remainingElement = document.getElementById('remainingDistance');
+        if (remainingElement) {
+            if (remainingDistance > 1000) {
+                remainingElement.textContent = `${(remainingDistance / 1000).toFixed(1)} km`;
+            } else {
+                remainingElement.textContent = `${Math.round(remainingDistance)} m`;
+            }
+        }
+
+        // Calcular ETA (estimación muy básica)
+        const avgSpeed = (lastPosition && lastPosition.speed) ? lastPosition.speed * 3.6 : 30; // km/h
+        const etaHours = (remainingDistance / 1000) / avgSpeed;
+        const etaMinutes = Math.round(etaHours * 60);
+
+        const etaElement = document.getElementById('estimatedArrival');
+        if (etaElement && etaMinutes > 0) {
+            const now = new Date();
+            const eta = new Date(now.getTime() + etaMinutes * 60000);
+            etaElement.textContent = eta.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        }
+    }
+
+    function toggleNavigationControls(show) {
+        const navigationControls = document.getElementById('navigationControls');
+        if (navigationControls) {
+            navigationControls.style.display = show ? 'block' : 'none';
+        }
+    }
+
+    function toggleNavigationPanel() {
+        const panel = document.getElementById('navigationPanel');
+        const miniPanel = document.getElementById('navigationPanelMinimized');
+
+        if (panel && miniPanel) {
+            if (panel.style.display !== 'none') {
+                // Minimizar
+                panel.style.display = 'none';
+                miniPanel.style.display = 'block';
+
+                // Actualizar texto del mini panel
+                const instruction = document.getElementById('turnInstruction');
+                const miniInstruction = document.getElementById('miniInstruction');
+                if (instruction && miniInstruction) {
+                    miniInstruction.textContent = instruction.textContent.substring(0, 20) + '...';
+                }
+            } else {
+                // Maximizar
+                panel.style.display = 'block';
+                miniPanel.style.display = 'none';
+            }
+        }
+    }
+
+    function updateNavigationAccuracy(position) {
+        const accuracy = position.accuracy;
+        let accuracyClass = 'accuracy-low';
+        let accuracyText = 'Baja';
+
+        if (accuracy <= 10) {
+            accuracyClass = 'accuracy-high';
+            accuracyText = 'Alta';
+        } else if (accuracy <= 25) {
+            accuracyClass = 'accuracy-medium';
+            accuracyText = 'Media';
+        }
+
+        const navigationPanel = document.getElementById('navigationPanel');
+        if (navigationPanel) {
+            // Remover indicador anterior
+            const existingIndicator = navigationPanel.querySelector('.navigation-accuracy');
+            if (existingIndicator) {
+                existingIndicator.remove();
+            }
+
+            // Agregar nuevo indicador
+            const accuracyIndicator = document.createElement('div');
+            accuracyIndicator.className = `navigation-accuracy ${accuracyClass}`;
+            accuracyIndicator.textContent = `GPS: ${accuracyText}`;
+            navigationPanel.appendChild(accuracyIndicator);
+        }
+    }
+
+    function checkRouteDeviation(currentPosition) {
+        if (!routeCoordinates || routeCoordinates.length === 0) {
+            return;
+        }
+
+        const closestPoint = findClosestPointOnRoute(currentPosition, routeCoordinates);
+        const distanceToRoute = calculateDistance(
+            currentPosition.lat, currentPosition.lng,
+            routeCoordinates[closestPoint][0], routeCoordinates[closestPoint][1]
+        ) * 1000; // En metros
+
+        // Si estamos a más de 100 metros de la ruta planificada
+        if (distanceToRoute > 100) {
+            console.log(`Desvío detectado: ${distanceToRoute.toFixed(0)}m de la ruta`);
+
+            // Mostrar alerta solo una vez cada 30 segundos
+            const now = Date.now();
+            if (!window.lastDeviationAlert || (now - window.lastDeviationAlert) > 30000) {
+                showNavigationToast('Te has desviado de la ruta planificada', 'warning');
+                window.lastDeviationAlert = now;
+
+                // Recalcular navegación
+                recalculateNavigation(currentPosition, routeCoordinates);
+            }
+        }
+    }
+
+    // === FUNCIONES DE CONTROL DE NAVEGACIÓN ===
+
+    function recalculateFromCurrentPosition() {
+        if (!lastPosition || !routeCoordinates) {
+            showNavigationToast('No hay posición GPS disponible', 'warning');
+            return;
+        }
+
+        showNavigationToast('Recalculando ruta desde tu posición actual...', 'info');
+
+        // Regenerar instrucciones desde posición actual
+        navigationInstructions = generateNavigationInstructions(routeCoordinates, lastPosition);
+        currentInstructionIndex = 0;
+
+        if (navigationInstructions.length > 0) {
+            updateNavigationUI(navigationInstructions[0], calculateDistanceToInstruction(lastPosition, navigationInstructions[0]));
+            showNavigationToast('Ruta recalculada exitosamente', 'success');
+        }
+    }
+
+    function skipCurrentInstruction() {
+        if (!navigationInstructions || currentInstructionIndex >= navigationInstructions.length - 1) {
+            showNavigationToast('No hay instrucciones para saltar', 'warning');
+            return;
+        }
+
+        currentInstructionIndex++;
+        const nextInstruction = navigationInstructions[currentInstructionIndex];
+
+        if (nextInstruction && lastPosition) {
+            updateNavigationUI(nextInstruction, calculateDistanceToInstruction(lastPosition, nextInstruction));
+            showNavigationToast(`Saltando a: ${nextInstruction.instruction}`, 'info');
+        }
+    }
+
+    function toggleNavigation() {
+        isNavigationActive = !isNavigationActive;
+
+        const pauseBtn = document.getElementById('pauseNavigationBtn');
+
+        if (isNavigationActive) {
+            showNavigationToast('Navegación reanudada', 'info');
+            if (pauseBtn) {
+                pauseBtn.innerHTML = '<i class="fas fa-pause me-2"></i>Pausar Navegación';
+                pauseBtn.classList.remove('btn-success');
+                pauseBtn.classList.add('btn-warning');
+            }
+        } else {
+            showNavigationToast('Navegación pausada', 'warning');
+            if (pauseBtn) {
+                pauseBtn.innerHTML = '<i class="fas fa-play me-2"></i>Reanudar Navegación';
+                pauseBtn.classList.remove('btn-warning');
+                pauseBtn.classList.add('btn-success');
+            }
+            if (voiceEnabled) {
+                window.speechSynthesis.cancel();
+            }
+        }
+    }
+
+    function recalculateNavigation(currentPosition, routeCoordinates) {
+        if (!isNavigationActive || !currentPosition || !routeCoordinates) {
+            return;
+        }
+
+        navigationInstructions = generateNavigationInstructions(routeCoordinates, currentPosition);
+        currentInstructionIndex = 0;
+
+        if (navigationInstructions.length > 0) {
+            updateNavigationUI(navigationInstructions[0], calculateDistanceToInstruction(currentPosition, navigationInstructions[0]));
+        }
+    }
+
+    function cleanupNavigation() {
+        isNavigationActive = false;
+        currentInstructionIndex = 0;
+        navigationInstructions = [];
+
+        const turnInstruction = document.getElementById('turnInstruction');
+        const turnDistance = document.getElementById('turnDistance');
+        const navigationPanel = document.getElementById('navigationPanel');
+        const miniPanel = document.getElementById('navigationPanelMinimized');
+
+        if (turnInstruction) turnInstruction.textContent = 'Navegación detenida';
+        if (turnDistance) turnDistance.textContent = '';
+        if (navigationPanel) navigationPanel.style.display = 'none';
+        if (miniPanel) miniPanel.style.display = 'none';
+
+        toggleNavigationControls(false);
+
+        if (voiceEnabled && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+    }
+
+    // === MEJORAR LA FUNCIÓN onGPSSuccess ORIGINAL ===
+    function onGPSSuccess(position) {
+        const coords = position.coords;
+        lastPosition = {
+            lat: coords.latitude,
+            lng: coords.longitude,
+            accuracy: coords.accuracy,
+            speed: coords.speed || 0,
+            heading: coords.heading || 0,
+            timestamp: new Date()
+        };
+
+        console.log('GPS position updated:', lastPosition);
+
+        // Calcular distancia recorrida
+        if (previousPosition) {
+            const distance = calculateDistance(
+                previousPosition.lat, previousPosition.lng,
+                lastPosition.lat, lastPosition.lng
+            );
+
+            if (distance < 0.1) {
+                traveledDistance += distance;
+            }
+        }
+
+        previousPosition = lastPosition;
+
+        // Actualizar UI básica
+        updatePositionDisplay(lastPosition);
+        updateMapPosition(lastPosition);
+        updateStatistics(lastPosition);
+
+        // === NUEVAS CARACTERÍSTICAS DE NAVEGACIÓN ===
+
+        // Actualizar navegación mejorada
+        if (isNavigationActive) {
+            updateNavigationInstructions(lastPosition);
+            updateNavigationAccuracy(position);
+        }
+
+        // Enviar al servidor cada 30 segundos
+        const now = Date.now();
+        if (!lastTrackingUpdate || (now - lastTrackingUpdate) > 30000) {
+            sendPositionUpdate(lastPosition);
+            lastTrackingUpdate = now;
+        }
+
+        // Almacenar punto para el tracking
+        trackingPoints.push({
+            lat: lastPosition.lat,
+            lng: lastPosition.lng,
+            timestamp: lastPosition.timestamp.toISOString(),
+            speed: lastPosition.speed,
+            accuracy: lastPosition.accuracy
+        });
+    }
+
+    function showNavigationToast(message, type = 'info') {
+        const toastEl = $('#gpsToast');
+        const toastBody = $('#gpsToastBody');
+
+        let bgClass = 'bg-primary';
+        let icon = 'fas fa-navigation';
+
+        switch (type) {
+            case 'success':
+                bgClass = 'bg-success text-white';
+                icon = 'fas fa-check-circle';
+                break;
+            case 'warning':
+                bgClass = 'bg-warning';
+                icon = 'fas fa-exclamation-triangle';
+                break;
+            case 'error':
+                bgClass = 'bg-danger text-white';
+                icon = 'fas fa-exclamation-triangle';
+                break;
+        }
+
+        toastEl.removeClass('bg-info bg-success bg-danger bg-warning bg-primary text-white').addClass(bgClass);
+        toastEl.find('.toast-header i').removeClass().addClass(icon + ' me-2');
+        toastBody.text(message);
+
+        const toast = new bootstrap.Toast(toastEl[0], {
+            delay: 4000
+        });
+        toast.show();
+    }
+
+    // === RESTO DE FUNCIONES ORIGINALES ===
+
+    function startElapsedTimer() {
+        elapsedInterval = setInterval(updateElapsedTime, 1000);
+        updateElapsedTime(); // Actualizar inmediatamente
+    }
+
+    function updateElapsedTime() {
+        const now = new Date();
+        const elapsed = Math.floor((now - startTime) / 1000);
+
+        const hours = Math.floor(elapsed / 3600);
+        const minutes = Math.floor((elapsed % 3600) / 60);
+        const seconds = elapsed % 60;
+
+        const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        $('#elapsedTime').text(timeString);
     }
 
     function startGPS() {
         if (!navigator.geolocation) {
-            showNotification('Geolocalización no disponible en este dispositivo', 'error');
+            showToast('Geolocalización no disponible', 'error');
             return;
         }
 
-        showNotification('Activando GPS inteligente...', 'info');
+        const options = {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 30000
+        };
+
+        showToast('Activando GPS...', 'info');
 
         gpsWatchId = navigator.geolocation.watchPosition(
             onGPSSuccess,
             onGPSError,
-            GPS_CONFIG
+            options
         );
 
         gpsActive = true;
         updateGPSUI();
-        console.log('✅ GPS activado con configuración inteligente');
     }
 
     function stopGPS() {
@@ -1352,312 +2665,120 @@
 
         gpsActive = false;
         updateGPSUI();
-        showNotification('GPS desactivado', 'warning');
-        console.log('⏹️ GPS desactivado');
-    }
+        showToast('GPS desactivado', 'info');
 
-    function onGPSSuccess(position) {
-        const coords = position.coords;
-        currentPosition = {
-            lat: coords.latitude,
-            lng: coords.longitude,
-            accuracy: coords.accuracy,
-            speed: coords.speed || 0,
-            heading: coords.heading || 0,
-            timestamp: new Date()
-        };
+        // Limpiar navegación
+        cleanupNavigation();
 
-        // Actualizar interfaz
-        updatePositionDisplay();
-        updateMapPosition();
-        updateStatistics();
-        updateTurnByTurn();
+        // Ocultar elementos relacionados con GPS
+        $('#currentPosition').hide();
+        $('#navigationOverlay').hide();
+        $('#centerPositionBtn').hide();
 
-        // Actualizar posición en servidor (optimizado)
-        updatePositionOptimized(position);
-
-        console.log('📍 Posición GPS actualizada:', currentPosition);
+        // Remover marcador de posición
+        if (positionMarker && map) {
+            map.removeLayer(positionMarker);
+            positionMarker = null;
+        }
     }
 
     function onGPSError(error) {
         let errorMessage = 'Error de GPS';
+
         switch (error.code) {
             case error.PERMISSION_DENIED:
-                errorMessage = 'Permiso de ubicación denegado. Activa la ubicación en configuración.';
+                errorMessage = 'Permiso de ubicación denegado';
                 break;
             case error.POSITION_UNAVAILABLE:
-                errorMessage = 'Ubicación no disponible. Verifica tu conexión.';
+                errorMessage = 'Ubicación no disponible';
                 break;
             case error.TIMEOUT:
-                errorMessage = 'Tiempo de espera de GPS agotado.';
+                errorMessage = 'Timeout de GPS';
                 break;
         }
 
-        showNotification(errorMessage, 'error');
-        updateGPSStatus('error');
-        console.error('❌ Error GPS:', error);
+        console.error('GPS Error:', error);
+        $('#gpsStatus').removeClass('bg-success gps-active').addClass('bg-danger').html('<i class="fas fa-exclamation-triangle me-1"></i>Error GPS');
+        showToast(errorMessage, 'error');
     }
 
-    // Actualización optimizada de posición
-    async function updatePositionOptimized(position) {
-        if (!navigationSession) return;
+    function updateGPSUI() {
+        const btn = $('#toggleGpsBtn');
+        const status = $('#gpsStatus');
+        const buttonText = $('#gpsButtonText');
 
-        const now = Date.now();
-        const timeSinceLastUpdate = now - lastUpdateTime;
-
-        // Optimización inteligente basada en movimiento y batería
-        const speed = (position.coords.speed || 0) * 3.6; // km/h
-        const isMoving = speed > 5;
-
-        let shouldUpdate = false;
-
-        if (isMoving) {
-            // Actualizar más frecuentemente cuando se mueve
-            shouldUpdate = timeSinceLastUpdate > (batteryLevel > 20 ? 15000 : 30000);
+        if (gpsActive) {
+            btn.removeClass('btn-outline-primary').addClass('btn-outline-danger');
+            buttonText.text('Desactivar GPS');
+            status.removeClass('bg-secondary bg-danger').addClass('bg-success gps-active')
+                .html('<i class="fas fa-satellite-dish me-1"></i>GPS Activo');
         } else {
-            // Actualizar menos frecuentemente cuando está parado
-            shouldUpdate = timeSinceLastUpdate > 60000;
+            btn.removeClass('btn-outline-danger').addClass('btn-outline-primary');
+            buttonText.text('Activar GPS');
+            status.removeClass('bg-success bg-danger gps-active').addClass('bg-secondary')
+                .html('<i class="fas fa-satellite-dish me-1"></i>GPS Inactivo');
         }
+    }
 
-        if (!shouldUpdate) return;
+    function updatePositionDisplay(position) {
+        const coordsText = `${position.lat.toFixed(6)}, ${position.lng.toFixed(6)}`;
+        const timeText = position.timestamp.toLocaleTimeString();
+        const accuracyText = `±${Math.round(position.accuracy)}m`;
+
+        $('#coordinates').html(`${coordsText}<br><small class="text-muted">${accuracyText}</small>`);
+        $('#lastUpdate').text(`Actualizado: ${timeText}`);
+        $('#overlayCoords').text(coordsText);
+        $('#overlayTime').text(timeText);
+
+        $('#gpsAccuracy').text(accuracyText).show();
+        $('#currentPosition').show();
+        $('#navigationOverlay').show();
+        $('#centerPositionBtn').show();
+    }
+
+    function updateMapPosition(position) {
+        if (!map) return;
 
         try {
-            const response = await fetch('/api/navigation/update-position', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({
-                    session_id: navigationSession.session_id,
-                    position: {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude,
-                        accuracy: position.coords.accuracy,
-                        speed: position.coords.speed,
-                        heading: position.coords.heading,
-                        battery_level: batteryLevel
-                    }
+            // Remover marcador anterior
+            if (positionMarker) {
+                map.removeLayer(positionMarker);
+            }
+
+            // Crear nuevo marcador de posición
+            positionMarker = L.marker([position.lat, position.lng], {
+                icon: L.divIcon({
+                    html: '<div class="position-marker"><i class="fas fa-location-arrow text-white"></i></div>',
+                    className: 'position-marker-icon',
+                    iconSize: [20, 20]
                 })
-            });
+            }).addTo(map);
 
-            const data = await response.json();
-
-            if (data.success) {
-                lastUpdateTime = now;
-                gpsPointsCount = data.points_recorded || gpsPointsCount;
-
-                // Procesar sugerencias de navegación
-                if (data.navigation_hints) {
-                    processNavigationHints(data.navigation_hints);
-                }
-
-                // Mostrar advertencias si hay
-                if (data.warning) {
-                    showNotification(data.warning.message, 'warning');
-                }
-
-                console.log('📡 Posición enviada al servidor');
+            // Añadir círculo de precisión si la precisión es buena
+            if (position.accuracy < 50) {
+                L.circle([position.lat, position.lng], {
+                    radius: position.accuracy,
+                    color: '#007bff',
+                    fillColor: '#007bff',
+                    fillOpacity: 0.1,
+                    weight: 1
+                }).addTo(map);
             }
 
         } catch (error) {
-            console.error('❌ Error actualizando posición:', error);
+            console.error('Error updating map position:', error);
         }
     }
 
-    // Procesar sugerencias de navegación
-    function processNavigationHints(hints) {
-        hints.forEach(hint => {
-            switch (hint.type) {
-                case 'speed_suggestion':
-                    updateTurnByTurn('🚗', 'Sugerencia de velocidad', hint.message);
-                    break;
-                case 'gps_warning':
-                    updateTurnByTurn('⚠️', 'Atención GPS', hint.message);
-                    break;
-                default:
-                    console.log('💡 Sugerencia recibida:', hint);
-            }
-        });
+    function updateStatistics(position) {
+        // Actualizar velocidad
+        const speedKmh = (position.speed || 0) * 3.6; // m/s a km/h
+        $('#currentSpeed').text(`${speedKmh.toFixed(1)} km/h`);
+
+        // Actualizar distancia recorrida
+        $('#traveledDistance').text(`${traveledDistance.toFixed(1)} km`);
     }
 
-    // Actualizar interfaz de GPS
-    function updateGPSUI() {
-        const statusIndicator = document.getElementById('gpsStatusIndicator');
-        const mainActionBtn = document.getElementById('mainActionBtn');
-
-        if (gpsActive) {
-            statusIndicator.className = 'status-indicator status-gps-active';
-            statusIndicator.innerHTML = '<i class="fas fa-satellite-dish"></i> GPS Activo';
-
-            mainActionBtn.innerHTML = '<i class="fas fa-stop"></i>';
-            mainActionBtn.className = 'fab danger';
-            mainActionBtn.title = 'Detener GPS';
-        } else {
-            statusIndicator.className = 'status-indicator status-gps-inactive';
-            statusIndicator.innerHTML = '<i class="fas fa-satellite-dish"></i> GPS Inactivo';
-
-            mainActionBtn.innerHTML = '<i class="fas fa-play"></i>';
-            mainActionBtn.className = 'fab';
-            mainActionBtn.title = 'Activar GPS';
-        }
-    }
-
-    function updateGPSStatus(status) {
-        const statusIndicator = document.getElementById('gpsStatusIndicator');
-
-        switch (status) {
-            case 'active':
-                statusIndicator.className = 'status-indicator status-gps-active';
-                statusIndicator.innerHTML = '<i class="fas fa-satellite-dish"></i> GPS Activo';
-                break;
-            case 'error':
-                statusIndicator.className = 'status-indicator status-gps-error';
-                statusIndicator.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error GPS';
-                break;
-            default:
-                statusIndicator.className = 'status-indicator status-gps-inactive';
-                statusIndicator.innerHTML = '<i class="fas fa-satellite-dish"></i> GPS Inactivo';
-        }
-    }
-
-    // Actualizar visualización de posición
-    function updatePositionDisplay() {
-        if (!currentPosition) return;
-
-        const posElement = document.getElementById('currentPosition');
-        const accElement = document.getElementById('gpsAccuracy');
-        const speedElement = document.getElementById('currentSpeed');
-
-        posElement.innerHTML = `${currentPosition.lat.toFixed(6)}, ${currentPosition.lng.toFixed(6)}`;
-        accElement.innerHTML = `±${Math.round(currentPosition.accuracy)}m`;
-
-        const speedKmh = (currentPosition.speed || 0) * 3.6;
-        speedElement.textContent = Math.round(speedKmh);
-
-        // Actualizar historial de velocidad
-        speedHistory.push(speedKmh);
-        if (speedHistory.length > 10) {
-            speedHistory.shift();
-        }
-
-        updateGPSStatus('active');
-    }
-
-    // Actualizar posición en mapa
-    function updateMapPosition() {
-        if (!currentPosition || !map) return;
-
-        // Remover marcador anterior si existe
-        if (window.currentPositionMarker) {
-            map.removeLayer(window.currentPositionMarker);
-        }
-
-        // Crear nuevo marcador
-        window.currentPositionMarker = L.marker([currentPosition.lat, currentPosition.lng], {
-            icon: L.divIcon({
-                html: '<div class="custom-position-marker"><i class="fas fa-location-arrow"></i></div>',
-                className: 'position-marker-container',
-                iconSize: [20, 20]
-            })
-        }).addTo(map);
-
-        // Círculo de precisión
-        if (currentPosition.accuracy < 100) {
-            if (window.accuracyCircle) {
-                map.removeLayer(window.accuracyCircle);
-            }
-
-            window.accuracyCircle = L.circle([currentPosition.lat, currentPosition.lng], {
-                radius: currentPosition.accuracy,
-                color: '#007bff',
-                fillColor: '#007bff',
-                fillOpacity: 0.1,
-                weight: 1
-            }).addTo(map);
-        }
-    }
-
-    // Actualizar estadísticas
-    function updateStatistics() {
-        if (!currentPosition) return;
-
-        // Calcular distancia recorrida
-        if (lastPosition) {
-            const distance = calculateDistance(
-                lastPosition.lat, lastPosition.lng,
-                currentPosition.lat, currentPosition.lng
-            );
-
-            if (distance < 0.1) { // Solo agregar distancias razonables
-                traveledDistance += distance;
-            }
-        }
-
-        lastPosition = { ...currentPosition };
-
-        // Actualizar elementos de interfaz
-        document.getElementById('traveledDistance').textContent = `${traveledDistance.toFixed(1)} km`;
-        document.getElementById('gpsPointsCount').textContent = gpsPointsCount;
-
-        // Velocidad promedio
-        if (speedHistory.length > 0) {
-            const avgSpeed = speedHistory.reduce((a, b) => a + b, 0) / speedHistory.length;
-            document.getElementById('averageSpeed').textContent = `${Math.round(avgSpeed)} km/h`;
-        }
-
-        // Progreso de ruta (estimado)
-        const estimatedDistance = {{ route.distance / 1000 if route.distance else 12.8
-    }};
-    routeProgress = Math.min(100, (traveledDistance / estimatedDistance) * 100);
-    document.getElementById('routeProgress').style.width = `${routeProgress}%`;
-
-    // Estimación de combustible
-    const fuelEstimate = Math.max(1, {{ completion.fuel_start }} - Math.floor(traveledDistance / 3.2));
-    document.getElementById('currentFuelEstimate').textContent = `${fuelEstimate}/4`;
-    document.getElementById('currentFuelEstimate').className =
-        `badge ${fuelEstimate > 2 ? 'bg-success' : fuelEstimate > 1 ? 'bg-warning' : 'bg-danger'}`;
-
-    // Eficiencia de ruta
-    const efficiency = Math.min(100, (estimatedDistance / Math.max(traveledDistance, 0.1)) * 100);
-    document.getElementById('routeEfficiency').textContent = `${Math.round(efficiency)}%`;
-    }
-
-    // Actualizar navegación turn-by-turn
-    function updateTurnByTurn(icon = null, instruction = null, distance = null) {
-        if (!currentPosition) return;
-
-        const turnPanel = document.getElementById('turnPanel');
-        const turnIcon = document.getElementById('turnIcon');
-        const turnInstruction = document.getElementById('turnInstruction');
-        const turnDistance = document.getElementById('turnDistance');
-
-        // Mostrar panel si GPS está activo
-        if (gpsActive) {
-            turnPanel.style.display = 'block';
-
-            const speed = (currentPosition.speed || 0) * 3.6;
-
-            if (icon && instruction) {
-                // Usar sugerencia proporcionada
-                turnIcon.innerHTML = icon;
-                turnInstruction.textContent = instruction;
-                turnDistance.textContent = distance || `${Math.round(speed)} km/h`;
-            } else if (speed > 5) {
-                turnIcon.innerHTML = '<i class="fas fa-arrow-up"></i>';
-                turnInstruction.textContent = 'Continúa recto';
-                turnDistance.textContent = `${Math.round(speed)} km/h - Siguiente: 200m`;
-            } else {
-                turnIcon.innerHTML = '<i class="fas fa-pause"></i>';
-                turnInstruction.textContent = 'Vehículo detenido';
-                turnDistance.textContent = 'Esperando movimiento...';
-            }
-        } else {
-            turnPanel.style.display = 'none';
-        }
-    }
-
-    // Funciones de utilidad
     function calculateDistance(lat1, lng1, lat2, lng2) {
         const R = 6371; // Radio de la Tierra en km
         const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -1669,406 +2790,368 @@
         return R * c;
     }
 
-    function startElapsedTimer() {
-        setInterval(() => {
-            const now = new Date();
-            const elapsed = Math.floor((now - startTime) / 1000);
-            const hours = Math.floor(elapsed / 3600);
-            const minutes = Math.floor((elapsed % 3600) / 60);
-            const seconds = elapsed % 60;
-
-            document.getElementById('elapsedTime').textContent =
-                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        }, 1000);
-    }
-
-    // Controles de interfaz
-    function toggleSidePanel() {
-        const panel = document.getElementById('sidePanel');
-        panel.classList.toggle('open');
-    }
-
-    function toggleOverlay() {
-        const overlay = document.getElementById('smartOverlay');
-        isOverlayMinimized = !isOverlayMinimized;
-        overlay.classList.toggle('minimized', isOverlayMinimized);
-    }
-
-    function centerOnPosition() {
-        if (currentPosition && map) {
-            map.setView([currentPosition.lat, currentPosition.lng], 16);
-            showNotification('Centrado en tu ubicación', 'success');
-        } else {
-            showNotification('Ubicación no disponible', 'warning');
+    function centerOnRoute() {
+        if (routeLayer && map) {
+            map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
         }
     }
 
-    function centerOnRoute() {
-        map.setView([-3.8177, -78.7515], 14);
-        showNotification('Vista centrada en la ruta', 'info');
+    function centerOnPosition() {
+        if (lastPosition && map) {
+            map.setView([lastPosition.lat, lastPosition.lng], 16);
+        }
     }
 
     function toggleMapType() {
         const types = ['street', 'satellite', 'terrain'];
-        const currentIndex = types.indexOf(mapType);
-        mapType = types[(currentIndex + 1) % types.length];
+        const currentIndex = types.indexOf(currentMapType);
+        currentMapType = types[(currentIndex + 1) % types.length];
 
         updateMapLayer();
 
-        const typeNames = { street: 'Calles', satellite: 'Satélite', terrain: 'Terreno' };
-        showNotification(`Vista cambiada: ${typeNames[mapType]}`, 'info');
+        // Actualizar icono del botón
+        const icons = {
+            'street': 'fas fa-road',
+            'satellite': 'fas fa-satellite',
+            'terrain': 'fas fa-mountain'
+        };
+
+        $('#mapTypeBtn i').removeClass().addClass(icons[currentMapType]);
+        showToast(`Vista cambiada: ${currentMapType}`, 'info');
     }
 
-    function toggleTraffic() {
-        const trafficBtn = document.getElementById('trafficBtn');
-        trafficBtn.classList.toggle('active');
+    function toggleFullscreen() {
+        $('#fullscreenModal').modal('show');
 
-        if (trafficBtn.classList.contains('active')) {
-            showNotification('Información de tráfico activada', 'success');
-        } else {
-            showNotification('Información de tráfico desactivada', 'info');
-        }
-    }
+        // Inicializar mapa de pantalla completa
+        $('#fullscreenModal').on('shown.bs.modal', function () {
+            if (!fullscreenMap) {
+                fullscreenMap = L.map('fullscreenMap').setView([-3.8167, -78.7500], 13);
+                updateMapLayer();
 
-    // Funciones de control de ruta
-    function completeRoute() {
-        const modal = new bootstrap.Modal(document.getElementById('completeModal'));
-
-        // Actualizar datos del modal
-        const elapsed = Math.floor((new Date() - startTime) / 1000);
-        const hours = Math.floor(elapsed / 3600);
-        const minutes = Math.floor((elapsed % 3600) / 60);
-
-        document.getElementById('tripTime').textContent = `${hours}h ${minutes}m`;
-        document.getElementById('tripDistance').textContent = `${traveledDistance.toFixed(1)} km`;
-
-        if (speedHistory.length > 0) {
-            const avgSpeed = speedHistory.reduce((a, b) => a + b, 0) / speedHistory.length;
-            document.getElementById('tripAvgSpeed').textContent = `${avgSpeed.toFixed(1)} km/h`;
-        }
-
-        modal.show();
-    }
-
-    // Función mejorada para completar ruta
-    async function completeRouteAdvanced() {
-        if (!navigationSession) {
-            showNotification('No hay sesión de navegación activa', 'error');
-            return;
-        }
-
-        const fuelLevel = document.querySelector('input[name="fuelLevel"]:checked')?.value;
-        const notes = document.getElementById('completionNotes').value;
-
-        if (!fuelLevel) {
-            showNotification('Selecciona el nivel de combustible', 'warning');
-            return;
-        }
-
-        // Deshabilitar botón y mostrar loading
-        const btn = document.getElementById('completeRouteBtn');
-        const originalHtml = btn.innerHTML;
-        btn.innerHTML = '<span class="loading-spinner me-2"></span>Completando...';
-        btn.disabled = true;
-
-        try {
-            const response = await fetch('/api/navigation/smart-complete', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({
-                    session_id: navigationSession.session_id,
-                    fuel_level: parseInt(fuelLevel),
-                    notes: notes
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                showNotification('Ruta completada con análisis inteligente', 'success');
-
-                // Mostrar resumen del análisis
-                if (data.analysis) {
-                    showCompletionSummary(data.analysis);
+                // Copiar ruta y posición actual
+                if (routeLayer) {
+                    L.polyline(routeLayer.getLatLngs(), {
+                        color: '#007bff',
+                        weight: 4,
+                        opacity: 0.8
+                    }).addTo(fullscreenMap);
                 }
 
-                // Detener GPS
-                if (gpsActive) stopGPS();
-
-                // Limpiar sesión
-                navigationSession = null;
-
-                // Cerrar modal y redirigir
-                const modal = bootstrap.Modal.getInstance(document.getElementById('completeModal'));
-                modal.hide();
-
-                setTimeout(() => {
-                    window.location.href = '/driver/dashboard';
-                }, 3000);
-            } else {
-                showNotification(data.error || 'Error completando ruta', 'error');
-                btn.innerHTML = originalHtml;
-                btn.disabled = false;
+                if (lastPosition) {
+                    L.marker([lastPosition.lat, lastPosition.lng]).addTo(fullscreenMap);
+                    fullscreenMap.setView([lastPosition.lat, lastPosition.lng], 16);
+                }
             }
-
-        } catch (error) {
-            showNotification('Error de conexión al completar ruta', 'error');
-            btn.innerHTML = originalHtml;
-            btn.disabled = false;
-        }
+        });
     }
 
-    // Mostrar resumen de análisis
-    function showCompletionSummary(analysis) {
-        const summaryHtml = `
-            <div class="alert alert-success mb-3">
-                <h6 class="mb-2">📊 Análisis del Recorrido Completado</h6>
-                <div class="row">
-                    <div class="col-md-6">
-                        <p class="mb-1"><strong>Distancia:</strong> ${analysis.actual_distance.toFixed(2)} km</p>
-                        <p class="mb-1"><strong>Tiempo total:</strong> ${Math.round(analysis.total_time)} min</p>
-                        <p class="mb-1"><strong>Velocidad prom.:</strong> ${analysis.avg_speed.toFixed(1)} km/h</p>
-                    </div>
-                    <div class="col-md-6">
-                        <p class="mb-1"><strong>Paradas:</strong> ${analysis.stops_count}</p>
-                        <p class="mb-1"><strong>Eficiencia:</strong> ${analysis.route_efficiency.toFixed(1)}%</p>
-                        <p class="mb-1"><strong>Puntuación:</strong> ${analysis.smooth_driving_score}/100</p>
-                    </div>
-                </div>
-            </div>
-        `;
+    function sendPositionUpdate(position) {
+        if (!gpsActive) return;
 
-        // Mostrar en el modal
-        const container = document.getElementById('analysisContainer');
-        document.getElementById('analysisContent').innerHTML = summaryHtml;
-        container.style.display = 'block';
+        const data = {
+            position: {
+                lat: position.lat,
+                lng: position.lng,
+                accuracy: position.accuracy,
+                speed: position.speed,
+                heading: position.heading,
+                timestamp: position.timestamp.toISOString()
+            }
+        };
+
+        makeRequest('/driver/update_route_progress/{{ completion.id }}', data,
+            function (response) {
+                console.log('Position sent successfully');
+            },
+            function (error) {
+                console.error('Error sending position:', error);
+            }
+        );
     }
 
     function pauseNavigation() {
         if (gpsActive) {
             stopGPS();
-            showNotification('Navegación pausada', 'warning');
+            showToast('Navegación pausada', 'info');
         } else {
-            showNotification('La navegación ya está pausada', 'info');
+            showToast('La navegación ya está pausada', 'warning');
         }
     }
 
-    function cancelRoute() {
-        if (confirm('¿Estás seguro de que quieres cancelar la ruta?')) {
+    function updateTripSummary() {
+        // Calcular tiempo total
+        const now = new Date();
+        const totalTime = Math.floor((now - startTime) / 1000);
+        const hours = Math.floor(totalTime / 3600);
+        const minutes = Math.floor((totalTime % 3600) / 60);
+
+        $('#summaryTime').text(`${hours}h ${minutes}m`);
+        $('#summaryDistance').text(`${traveledDistance.toFixed(1)} km`);
+
+        // Calcular velocidad promedio
+        const avgSpeed = totalTime > 0 ? (traveledDistance / (totalTime / 3600)) : 0;
+        $('#summarySpeed').text(`${avgSpeed.toFixed(1)} km/h`);
+
+        $('#tripSummary').show();
+    }
+
+    function completeRoute() {
+        const fuelLevel = $('input[name="fuel_end_level"]:checked').val();
+        const notes = $('#completion_notes').val().trim();
+
+        if (!fuelLevel) {
+            showToast('Selecciona el nivel de combustible', 'warning');
+            return;
+        }
+
+        if (!confirm(`¿Completar ruta con combustible ${fuelLevel}/4?`)) {
+            return;
+        }
+
+        const button = $('#completeRouteBtn');
+        const originalText = button.html();
+        button.html('<span class="spinner-border spinner-border-sm me-2"></span>Completando...').prop('disabled', true);
+
+        const requestData = {
+            fuel_level: parseInt(fuelLevel),
+            notes: notes,
+            final_position: lastPosition,
+            trip_summary: {
+                total_time: Math.floor((new Date() - startTime) / 1000),
+                traveled_distance: traveledDistance,
+                tracking_points: trackingPoints
+            }
+        };
+
+        makeRequest('/driver/complete_route/{{ completion.id }}', requestData,
+            function (response) {
+                if (gpsActive) stopGPS();
+
+                // Detener timer
+                if (elapsedInterval) {
+                    clearInterval(elapsedInterval);
+                }
+
+                showToast(response.message || 'Ruta completada exitosamente', 'success');
+                $('#completeModal').modal('hide');
+
+                setTimeout(() => {
+                    window.location.href = '/driver/dashboard';
+                }, 2000);
+            },
+            function (errorMessage) {
+                showToast(errorMessage, 'error');
+                button.html(originalText).prop('disabled', false);
+            }
+        );
+    }
+
+    function cancelRoute(completionId) {
+        const reason = prompt('¿Por qué cancelas la ruta?');
+
+        if (reason !== null && reason.trim() !== '') {
             if (gpsActive) stopGPS();
 
-            // Limpiar sesión
-            navigationSession = null;
+            // Detener timer
+            if (elapsedInterval) {
+                clearInterval(elapsedInterval);
+            }
 
-            showNotification('Ruta cancelada', 'error');
+            const requestData = {
+                reason: reason.trim(),
+                final_position: lastPosition,
+                trip_summary: {
+                    total_time: Math.floor((new Date() - startTime) / 1000),
+                    traveled_distance: traveledDistance,
+                    tracking_points: trackingPoints
+                }
+            };
 
-            setTimeout(() => {
-                window.location.href = '/driver/dashboard';
-            }, 2000);
+            makeRequest(`/driver/cancel_route/${completionId}`, requestData,
+                function (response) {
+                    showToast(response.message || 'Ruta cancelada', 'success');
+                    setTimeout(() => {
+                        window.location.href = '/driver/dashboard';
+                    }, 2000);
+                },
+                function (errorMessage) {
+                    showToast(errorMessage, 'error');
+                }
+            );
         }
     }
 
-    // Sistema de notificaciones mejorado
-    function showNotification(message, type = 'info') {
-        const toast = document.getElementById('notificationToast');
-        const messageEl = document.getElementById('toastMessage');
-        const iconEl = document.getElementById('toastIcon');
+    function showToast(message, type = 'info') {
+        const toastEl = $('#gpsToast');
+        const toastBody = $('#gpsToastBody');
 
-        // Limpiar clases anteriores
-        toast.className = 'notification-toast';
+        let bgClass = 'bg-info';
+        let icon = 'fas fa-info-circle';
 
-        // Configurar icono según tipo
-        let iconClass = 'fas fa-info-circle';
         switch (type) {
             case 'success':
-                iconClass = 'fas fa-check-circle';
+                bgClass = 'bg-success text-white';
+                icon = 'fas fa-check-circle';
                 break;
             case 'error':
             case 'danger':
-                iconClass = 'fas fa-exclamation-triangle';
+                bgClass = 'bg-danger text-white';
+                icon = 'fas fa-exclamation-triangle';
                 break;
             case 'warning':
-                iconClass = 'fas fa-exclamation-triangle';
+                bgClass = 'bg-warning';
+                icon = 'fas fa-exclamation-triangle';
                 break;
         }
 
-        // Agregar clase de tipo y configurar contenido
-        toast.classList.add(type);
-        iconEl.className = iconClass + ' me-2';
-        messageEl.textContent = message;
+        toastEl.removeClass('bg-info bg-success bg-danger bg-warning text-white').addClass(bgClass);
+        toastEl.find('.toast-header i').removeClass().addClass(icon + ' me-2');
+        toastBody.text(message);
 
-        // Mostrar notificación
-        toast.classList.add('show');
-
-        // Ocultar después de tiempo variable según tipo
-        const delay = type === 'error' ? 5000 : type === 'success' ? 4000 : 3000;
-        setTimeout(() => {
-            toast.classList.remove('show');
-        }, delay);
-
-        // Log para desarrollo
-        console.log(`🔔 ${type.toUpperCase()}: ${message}`);
+        const toast = new bootstrap.Toast(toastEl[0], {
+            delay: type === 'error' ? 5000 : 3000
+        });
+        toast.show();
     }
 
-    // Configurar event listeners
-    function setupEventListeners() {
-        // Eventos de click con feedback háptico
-        document.querySelectorAll('.btn, .fab, .map-control-btn').forEach(btn => {
-            btn.addEventListener('click', function () {
-                hapticFeedback();
-                animateElement(this, 'bounce-in');
-            });
-        });
-
-        // Manejo de orientación de pantalla
-        window.addEventListener('orientationchange', function () {
-            setTimeout(() => {
-                if (map) {
-                    map.invalidateSize();
+    function makeRequest(url, data, successCallback, errorCallback) {
+        $.ajax({
+            url: url,
+            method: 'POST',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            timeout: 15000,
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            },
+            success: function (response) {
+                if (typeof successCallback === 'function') {
+                    successCallback(response);
                 }
-            }, 500);
-        });
-
-        // Prevenir zoom accidental en inputs móviles
-        document.addEventListener('touchstart', function (e) {
-            if (e.touches.length > 1) {
-                e.preventDefault();
-            }
-        });
-
-        // Limpiar recursos al salir
-        window.addEventListener('beforeunload', function () {
-            if (gpsActive) {
-                stopGPS();
-            }
-        });
-
-        console.log('✅ Event listeners configurados');
-    }
-
-    // Funciones de utilidades adicionales
-    function requestNotificationPermission() {
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
-    }
-
-    function checkNetworkStatus() {
-        const indicator = document.getElementById('connectionIndicator');
-        const statusEl = document.getElementById('connectivityStatus');
-
-        function updateStatus() {
-            if (!navigator.onLine) {
-                indicator.style.display = 'block';
-                statusEl.innerHTML = `
-                    <div class="d-flex align-items-center text-danger">
-                        <i class="fas fa-wifi-slash me-2"></i>
-                        <small>Sin conexión</small>
-                    </div>
-                `;
-            } else {
-                indicator.style.display = 'none';
-                statusEl.innerHTML = `
-                    <div class="d-flex align-items-center text-success">
-                        <i class="fas fa-wifi me-2"></i>
-                        <small>Conexión estable</small>
-                    </div>
-                `;
-            }
-        }
-
-        window.addEventListener('online', updateStatus);
-        window.addEventListener('offline', updateStatus);
-        updateStatus();
-    }
-
-    // Monitoreo de batería
-    async function monitorBattery() {
-        if ('getBattery' in navigator) {
-            try {
-                const battery = await navigator.getBattery();
-                batteryLevel = Math.round(battery.level * 100);
-
-                battery.addEventListener('levelchange', () => {
-                    batteryLevel = Math.round(battery.level * 100);
-
-                    if (batteryLevel < 15) {
-                        showNotification('Batería baja: optimizando GPS automáticamente', 'warning');
-                    }
+            },
+            error: function (xhr, status, error) {
+                console.error('AJAX Error:', {
+                    url: url,
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    error: error,
+                    response: xhr.responseText
                 });
 
-                console.log(`🔋 Monitoreo de batería activado: ${batteryLevel}%`);
-            } catch (error) {
-                console.warn('⚠️ No se pudo acceder a información de batería');
+                let errorMessage = 'Error de conexión';
+
+                if (xhr.status === 0) {
+                    errorMessage = 'Sin conexión a internet';
+                } else if (xhr.status === 404) {
+                    errorMessage = 'Recurso no encontrado';
+                } else if (xhr.status === 500) {
+                    errorMessage = 'Error del servidor';
+                } else if (status === 'timeout') {
+                    errorMessage = 'Tiempo de espera agotado';
+                } else {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        errorMessage = response.error || response.message || errorMessage;
+                    } catch (e) {
+                        // Usar mensaje por defecto
+                    }
+                }
+
+                if (typeof errorCallback === 'function') {
+                    errorCallback(errorMessage);
+                }
+            }
+        });
+    }
+
+    function handleVisibilityChange() {
+        if (document.hidden) {
+            console.log('Page hidden, reducing GPS frequency');
+        } else {
+            console.log('Page visible, resuming normal GPS updates');
+            if (map) {
+                map.invalidateSize();
             }
         }
     }
 
-    // Feedback háptico
-    function hapticFeedback() {
-        if ('vibrate' in navigator) {
-            navigator.vibrate(50);
+    function handleConnectionChange() {
+        const isOnline = navigator.onLine;
+        const connectionStatus = $('#connectionStatus');
+
+        if (isOnline) {
+            connectionStatus.hide();
+        } else {
+            connectionStatus.show();
         }
     }
 
-    // Animaciones
-    function animateElement(element, animationClass) {
-        element.classList.add(animationClass);
-        setTimeout(() => {
-            element.classList.remove(animationClass);
-        }, 600);
-    }
-
-    // Gestión de tema
-    function updateTheme() {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (prefersDark) {
-            document.body.classList.add('dark-theme');
+    // Limpiar recursos al salir
+    window.addEventListener('beforeunload', function () {
+        if (gpsActive) {
+            stopGPS();
         }
-    }
-
-    // Overlays de carga
-    function showLoadingOverlay() {
-        document.getElementById('loadingOverlay').style.display = 'flex';
-    }
-
-    function hideLoadingOverlay() {
-        const overlay = document.getElementById('loadingOverlay');
-        overlay.classList.add('hidden');
-        setTimeout(() => {
-            overlay.style.display = 'none';
-        }, 300);
-    }
-
-    // Inicializar tema y configuraciones finales
-    updateTheme();
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateTheme);
-
-    // Log de debug para desarrollo
-    function debugLog(message, data = null) {
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            console.log(`[Navigation Debug] ${message}`, data);
+        if (elapsedInterval) {
+            clearInterval(elapsedInterval);
         }
-    }
-
-    // Log inicial del sistema
-    console.log('=== SISTEMA DE NAVEGACIÓN INTELIGENTE ===');
-    console.log('Características:', {
-        gpsSupported: 'geolocation' in navigator,
-        notificationSupported: 'Notification' in window,
-        batterySupported: 'getBattery' in navigator,
-        online: navigator.onLine,
-        screenSize: `${window.screen.width}x${window.screen.height}`,
-        viewportSize: `${window.innerWidth}x${window.innerHeight}`,
-        isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
     });
-    console.log('Ruta ID:', {{ route.id }});
+
+    // Manejar cambios de orientación en móvil
+    window.addEventListener('orientationchange', function () {
+        setTimeout(() => {
+            if (map) {
+                map.invalidateSize();
+                if (routeLayer) {
+                    map.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
+                }
+            }
+            if (fullscreenMap) {
+                fullscreenMap.invalidateSize();
+            }
+        }, 500);
+    });
+
+    // Función de utilidad para detectar dispositivo móvil
+    function isMobileDevice() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+
+    // Aplicar configuraciones específicas para móvil
+    if (isMobileDevice()) {
+        console.log('Mobile device detected, applying mobile optimizations');
+
+        $(document).ready(function () {
+            // Prevenir zoom accidental en inputs
+            $('input, textarea, select').on('focus', function () {
+                $('meta[name=viewport]').attr('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0');
+            }).on('blur', function () {
+                $('meta[name=viewport]').attr('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+            });
+
+            // Optimizar altura del mapa para móvil
+            $('#navigationMap').css('height', '60vh');
+
+            // Añadir clase para estilos móviles
+            $('body').addClass('mobile-device');
+        });
+    }
+
+    // Debug para identificar problemas de carga
+    console.log('=== NAVIGATION DEBUG INFO ===');
+    console.log('Route ID:', {{ route.id }});
+    console.log('Route name:', '{{ route.name }}');
     console.log('Completion ID:', {{ completion.id }});
-    console.log('Vehículo:', '{{ completion.vehicle.brand }} {{ completion.vehicle.model }}');
-    console.log('Combustible inicial:', {{ completion.fuel_start }});
-    console.log('===============================================');
+    console.log('Started at:', '{{ completion.started_at.isoformat() }}');
+    console.log('Vehicle:', '{{ completion.vehicle.plate_number if completion.vehicle else "N/A" }}');
+    console.log('User agent:', navigator.userAgent);
+    console.log('Screen size:', window.screen.width + 'x' + window.screen.height);
+    console.log('Viewport size:', window.innerWidth + 'x' + window.innerHeight);
+    console.log('Geolocation support:', 'geolocation' in navigator);
+    console.log('Voice synthesis support:', 'speechSynthesis' in window);
+    console.log('Online status:', navigator.onLine);
+    console.log('===============================');
+
+    console.log('🚗 Sistema de navegación mejorado completamente cargado');
 </script>
 {% endblock %}
