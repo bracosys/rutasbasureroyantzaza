@@ -118,8 +118,8 @@
                             <i class="fas fa-pause me-2"></i>Pausar
                         </button>
 
-                        <button type="button" class="btn btn-secondary" onclick="cancelRoute({{ completion.id }})">
-                            <i class="fas fa-times me-2"></i>Cancelar Ruta
+                        <button type="button" class="btn btn-secondary" onclick="cancelRoute('{{ completion.id }}')">
+                            <i class="fas fa-times me-2"></i>Cancelar Ruta               
                         </button>
                     </div>
 
@@ -3558,32 +3558,31 @@
         });
     }
 
+    
+
+
     // === FUNCIÓN PARA EXPORTAR DATOS DE TRACKING (DEBUG) ===
     function exportTrackingData() {
         const exportData = {
             route_info: {
-                route_id: {{ route.id }
-    },
-    route_name: '{{ route.name }}',
-        completion_id: { { completion.id } }
+                route_id: parseInt('{{ route.id }}'),
+                route_name: '{{ route.name }}',
+                completion_id: parseInt('{{ completion.id }}')
             },
-    tracking_summary: routeTrackingData,
-        tracking_points: trackingPoints
+            tracking_summary: routeTrackingData,
+            tracking_points: trackingPoints
         };
-
-    console.log('Datos de tracking:', exportData);
-
-    // Crear blob para descarga (útil para debug)
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tracking_data_route_{{ route.id }}_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+        
+        console.log('Datos de tracking:', exportData);
+        
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tracking_data_route_{{ route.id }}_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
     }
-
-
 
 
     function pauseNavigation() {
@@ -3684,6 +3683,7 @@
 
     // === FUNCIÓN CORREGIDA PARA CANCELAR RUTA ===
     function cancelRoute(completionId) {
+        completionId = parseInt(completionId);
         const reason = prompt('¿Por qué cancelas la ruta?');
 
         if (reason !== null && reason.trim() !== '') {
@@ -4023,9 +4023,9 @@
 
     // Debug para identificar problemas de carga
     console.log('=== NAVIGATION DEBUG INFO ===');
-    console.log('Route ID:', {{ route.id }});
+    console.log('Route ID:', '{{ route.id }}');
     console.log('Route name:', '{{ route.name }}');
-    console.log('Completion ID:', {{ completion.id }});
+    console.log('Completion ID:', '{{ completion.id }}');
     console.log('Started at:', '{{ completion.started_at.isoformat() }}');
     console.log('Vehicle:', '{{ completion.vehicle.plate_number if completion.vehicle else "N/A" }}');
     console.log('User agent:', navigator.userAgent);
