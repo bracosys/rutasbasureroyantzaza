@@ -973,7 +973,15 @@
 
     // Variables para tracking
     let trackingPoints = [];
-    let lastTrackingUpdate = null;
+    let routeTrackingData = {
+        startTime: null,
+        endTime: null,
+        totalDistance: 0,
+        averageSpeed: 0,
+        maxSpeed: 0,
+        trackingPoints: []
+    };
+
 
     // === NUEVAS VARIABLES PARA NAVEGACIÓN MEJORADA ===
     let currentInstructionIndex = 0;
@@ -986,6 +994,8 @@
     let routePointIndex = 0; // Índice del punto actual en la ruta
     let targetPointIndex = 1; // Índice del próximo punto objetivo
     let routeStarted = false; // Flag para saber si ya empezamos la ruta
+    let lastAdvanceTime = 0;
+    let minimumSegmentDistance = 50; // Metros mínimos para considerar un segmento
 
 
     $(document).ready(function () {
@@ -1333,12 +1343,9 @@
                 instruction: "No hay ruta disponible",
                 distance: 0,
                 type: "continue",
-                coordinate: null,
-                routeIndex: 0
+                coordinate: null
             }];
         }
-
-        const instructions = [];
 
         // Si no hemos empezado la ruta, guiar al punto de inicio
         if (!routeStarted) {
@@ -1348,55 +1355,75 @@
                 startPoint[0], startPoint[1]
             ) * 1000;
 
-            // Si estamos cerca del inicio (menos de 30 metros), marcar como iniciada
-            if (distanceToStart < 30) {
+            if (distanceToStart < 50) { // 50 metros para marcar como iniciada
                 routeStarted = true;
                 routePointIndex = 0;
-                targetPointIndex = 1;
-                console.log('Ruta iniciada - ahora siguiendo la ruta planificada');
+                targetPointIndex = findNextMeaningfulPoint(routeCoordinates, 0);
+                console.log('Ruta iniciada - siguiendo puntos significativos');
             } else {
-                // Instrucción para llegar al punto de inicio
-                const bearing = calculateBearing(
-                    currentPosition.lat, currentPosition.lng,
-                    startPoint[0], startPoint[1]
-                );
-
                 return [{
-                    instruction: `Dirígete al punto de inicio de la ruta (${Math.round(distanceToStart)}m)`,
+                    instruction: `Dirígete al punto de inicio de la ruta`,
                     distance: Math.round(distanceToStart),
                     type: "navigate_to_start",
-                    coordinate: startPoint,
-                    routeIndex: 0,
-                    bearing: bearing
+                    coordinate: startPoint
                 }];
             }
         }
 
-        // Ya estamos en la ruta - generar instrucciones siguiendo los puntos
-        let currentRouteIndex = routePointIndex;
+        // Generar instrucciones por segmentos significativos
+        return generateSegmentInstructions(routeCoordinates, currentPosition);
+    }
 
-        // Generar instrucciones para los próximos segmentos de la ruta
-        for (let i = 0; i < 8 && (currentRouteIndex + i + 1) < routeCoordinates.length; i++) {
-            const fromPoint = routeCoordinates[currentRouteIndex + i];
-            const toPoint = routeCoordinates[currentRouteIndex + i + 1];
+    function findNextMeaningfulPoint(routeCoordinates, fromIndex) {
+        if (fromIndex >= routeCoordinates.length - 1) {
+            return routeCoordinates.length - 1;
+        }
 
-            // Calcular distancia del segmento
+        let accumulatedDistance = 0;
+        let currentIndex = fromIndex;
+
+        // Buscar el próximo punto que esté a una distancia mínima significativa
+        while (currentIndex < routeCoordinates.length - 1) {
+            const nextIndex = currentIndex + 1;
             const segmentDistance = calculateDistance(
-                fromPoint[0], fromPoint[1],
-                toPoint[0], toPoint[1]
+                routeCoordinates[currentIndex][0], routeCoordinates[currentIndex][1],
+                routeCoordinates[nextIndex][0], routeCoordinates[nextIndex][1]
             ) * 1000;
 
-            // Determinar tipo de instrucción
-            const instructionType = determineInstructionTypeForSegment(
-                routeCoordinates,
-                currentRouteIndex + i
-            );
+            accumulatedDistance += segmentDistance;
+            currentIndex = nextIndex;
+
+            // Si hemos acumulado suficiente distancia o llegamos al final
+            if (accumulatedDistance >= minimumSegmentDistance || currentIndex >= routeCoordinates.length - 1) {
+                break;
+            }
+        }
+
+        return currentIndex;
+    }
+
+
+    function generateSegmentInstructions(routeCoordinates, currentPosition) {
+        const instructions = [];
+        let currentIndex = routePointIndex;
+
+        // Generar hasta 5 instrucciones significativas
+        for (let i = 0; i < 5 && currentIndex < routeCoordinates.length - 1; i++) {
+            const nextMeaningfulIndex = findNextMeaningfulPoint(routeCoordinates, currentIndex);
+
+            if (nextMeaningfulIndex <= currentIndex) break;
+
+            // Calcular distancia acumulada del segmento
+            const segmentDistance = calculateSegmentDistance(routeCoordinates, currentIndex, nextMeaningfulIndex);
+
+            // Determinar tipo de instrucción para este segmento
+            const instructionType = determineSegmentInstructionType(routeCoordinates, currentIndex, nextMeaningfulIndex);
 
             // Generar texto de instrucción
-            const instructionText = generateInstructionTextForRoute(
+            const instructionText = generateSegmentInstructionText(
                 instructionType,
                 segmentDistance,
-                currentRouteIndex + i + 1,
+                nextMeaningfulIndex,
                 routeCoordinates.length
             );
 
@@ -1404,24 +1431,252 @@
                 instruction: instructionText,
                 distance: Math.round(segmentDistance),
                 type: instructionType,
-                coordinate: toPoint,
-                routeIndex: currentRouteIndex + i + 1
+                coordinate: routeCoordinates[nextMeaningfulIndex],
+                routeIndex: nextMeaningfulIndex
             });
+
+            currentIndex = nextMeaningfulIndex;
         }
 
         // Agregar instrucción de destino si estamos cerca del final
-        if (currentRouteIndex >= routeCoordinates.length - 3) {
+        if (currentIndex >= routeCoordinates.length - 5) {
             instructions.push({
-                instruction: "Has llegado a tu destino",
+                instruction: "Te acercas al destino final",
                 distance: 0,
-                type: "destination",
+                type: "approaching_destination",
                 coordinate: routeCoordinates[routeCoordinates.length - 1],
                 routeIndex: routeCoordinates.length - 1
             });
         }
 
-        return instructions;
+        return instructions.length > 0 ? instructions : [{
+            instruction: "Continúa siguiendo la ruta",
+            distance: 0,
+            type: "continue",
+            coordinate: routeCoordinates[Math.min(targetPointIndex, routeCoordinates.length - 1)]
+        }];
     }
+
+
+
+
+
+    // === FUNCIÓN PARA CALCULAR DISTANCIA DE UN SEGMENTO ===
+    function calculateSegmentDistance(routeCoordinates, fromIndex, toIndex) {
+        let totalDistance = 0;
+
+        for (let i = fromIndex; i < toIndex && i < routeCoordinates.length - 1; i++) {
+            const distance = calculateDistance(
+                routeCoordinates[i][0], routeCoordinates[i][1],
+                routeCoordinates[i + 1][0], routeCoordinates[i + 1][1]
+            ) * 1000;
+            totalDistance += distance;
+        }
+
+        return totalDistance;
+    }
+
+    // === FUNCIÓN PARA DETERMINAR TIPO DE INSTRUCCIÓN DE SEGMENTO ===
+    function determineSegmentInstructionType(routeCoordinates, fromIndex, toIndex) {
+        if (toIndex <= fromIndex + 1) {
+            return "continue";
+        }
+
+        // Analizar el cambio de dirección general del segmento
+        const startPoint = routeCoordinates[fromIndex];
+        const midPoint = routeCoordinates[Math.floor((fromIndex + toIndex) / 2)];
+        const endPoint = routeCoordinates[toIndex];
+
+        const bearing1 = calculateBearing(startPoint[0], startPoint[1], midPoint[0], midPoint[1]);
+        const bearing2 = calculateBearing(midPoint[0], midPoint[1], endPoint[0], endPoint[1]);
+
+        let angleDiff = bearing2 - bearing1;
+
+        // Normalizar ángulo
+        if (angleDiff > 180) angleDiff -= 360;
+        if (angleDiff < -180) angleDiff += 360;
+
+        // Determinar tipo de giro
+        if (Math.abs(angleDiff) < 25) {
+            return "continue";
+        } else if (angleDiff > 25 && angleDiff < 75) {
+            return "turn_slight_right";
+        } else if (angleDiff >= 75 && angleDiff < 120) {
+            return "turn_right";
+        } else if (angleDiff >= 120) {
+            return "turn_sharp_right";
+        } else if (angleDiff < -25 && angleDiff > -75) {
+            return "turn_slight_left";
+        } else if (angleDiff <= -75 && angleDiff > -120) {
+            return "turn_left";
+        } else if (angleDiff <= -120) {
+            return "turn_sharp_left";
+        }
+
+        return "continue";
+    }
+
+    // === FUNCIÓN PARA GENERAR TEXTO DE INSTRUCCIÓN DE SEGMENTO ===
+    function generateSegmentInstructionText(type, distance, pointIndex, totalPoints) {
+        const distanceText = distance > 1000 ?
+            `${(distance / 1000).toFixed(1)} km` :
+            `${Math.round(distance)} metros`;
+
+        const progressPercent = Math.round((pointIndex / totalPoints) * 100);
+
+        switch (type) {
+            case "navigate_to_start":
+                return `Dirígete al punto de inicio de la ruta`;
+
+            case "continue":
+                if (distance > 800) {
+                    return `Continúa recto por ${distanceText}`;
+                } else {
+                    return `Sigue adelante ${distanceText}`;
+                }
+
+            case "turn_slight_right":
+                return `En ${distanceText}, gira ligeramente a la derecha`;
+
+            case "turn_right":
+                return `En ${distanceText}, gira a la derecha`;
+
+            case "turn_sharp_right":
+                return `En ${distanceText}, gira fuertemente a la derecha`;
+
+            case "turn_slight_left":
+                return `En ${distanceText}, gira ligeramente a la izquierda`;
+
+            case "turn_left":
+                return `En ${distanceText}, gira a la izquierda`;
+
+            case "turn_sharp_left":
+                return `En ${distanceText}, gira fuertemente a la izquierda`;
+
+            case "approaching_destination":
+                return "Te acercas al destino final";
+
+            default:
+                return `Continúa por la ruta ${distanceText} (${progressPercent}% completado)`;
+        }
+    }
+
+    // === FUNCIÓN CORREGIDA PARA ACTUALIZAR NAVEGACIÓN ===
+    function updateNavigationInstructions(currentPosition) {
+        if (!isNavigationActive || !routeCoordinates || routeCoordinates.length < 2) {
+            return;
+        }
+
+        // Actualizar posición en la ruta si ya la iniciamos
+        if (routeStarted) {
+            updateRouteProgressIntelligent(currentPosition);
+        }
+
+        // Regenerar instrucciones
+        const newInstructions = generateNavigationInstructions(routeCoordinates, currentPosition);
+
+        if (newInstructions.length > 0) {
+            const currentInstruction = newInstructions[0];
+
+            // Calcular distancia a la instrucción actual
+            let distanceToInstruction = 0;
+            if (currentInstruction.coordinate) {
+                distanceToInstruction = calculateDistance(
+                    currentPosition.lat, currentPosition.lng,
+                    currentInstruction.coordinate[0], currentInstruction.coordinate[1]
+                ) * 1000;
+            }
+
+            // Actualizar UI
+            updateNavigationUI(currentInstruction, Math.round(distanceToInstruction));
+
+            // Verificar si completamos el segmento actual
+            if (routeStarted && distanceToInstruction < 30) { // 30 metros de tolerancia
+                advanceToNextSegment();
+            }
+
+            // Actualizar instrucciones globales
+            navigationInstructions = newInstructions;
+            currentInstructionIndex = 0;
+        }
+
+        // Verificar desvío
+        checkRouteDeviationImproved(currentPosition);
+    }
+
+    // === FUNCIÓN PARA ACTUALIZAR PROGRESO INTELIGENTE ===
+    function updateRouteProgressIntelligent(currentPosition) {
+        if (!routeCoordinates || routeCoordinates.length < 2) return;
+
+        // Buscar el punto más cercano en un rango amplio
+        let closestDistance = Infinity;
+        let closestIndex = routePointIndex;
+
+        const searchStart = Math.max(0, routePointIndex - 3);
+        const searchEnd = Math.min(routeCoordinates.length - 1, routePointIndex + 10);
+
+        for (let i = searchStart; i <= searchEnd; i++) {
+            const distance = calculateDistance(
+                currentPosition.lat, currentPosition.lng,
+                routeCoordinates[i][0], routeCoordinates[i][1]
+            );
+
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestIndex = i;
+            }
+        }
+
+        // Solo avanzar si hay progreso significativo
+        if (closestIndex > routePointIndex + 2) { // Avanzar solo si hay progreso real
+            const now = Date.now();
+
+            // Evitar avances muy frecuentes
+            if (now - lastAdvanceTime > 5000) { // Mínimo 5 segundos entre avances
+                routePointIndex = closestIndex;
+                targetPointIndex = findNextMeaningfulPoint(routeCoordinates, routePointIndex);
+                lastAdvanceTime = now;
+
+                console.log(`Progreso en ruta: punto ${routePointIndex}/${routeCoordinates.length - 1} (${Math.round((routePointIndex / routeCoordinates.length) * 100)}%)`);
+
+                // Verificar si estamos cerca del final
+                if (routePointIndex >= routeCoordinates.length - 5) {
+                    announceNearingDestination();
+                }
+            }
+        }
+    }
+
+    // === FUNCIÓN PARA AVANZAR AL SIGUIENTE SEGMENTO ===
+    function advanceToNextSegment() {
+        const now = Date.now();
+
+        // Evitar avances muy rápidos
+        if (now - lastAdvanceTime < 3000) return; // Mínimo 3 segundos
+
+        if (targetPointIndex < routeCoordinates.length - 1) {
+            routePointIndex = targetPointIndex;
+            targetPointIndex = findNextMeaningfulPoint(routeCoordinates, routePointIndex);
+            lastAdvanceTime = now;
+
+            console.log(`Avanzando a segmento: desde punto ${routePointIndex} hacia ${targetPointIndex}`);
+
+            // Anunciar próxima instrucción
+            if (navigationInstructions.length > 1) {
+                announceInstruction(navigationInstructions[1]);
+            }
+        } else {
+            // Hemos llegado al final
+            routePointIndex = routeCoordinates.length - 1;
+            announceArrival();
+            isNavigationActive = false;
+            routeStarted = false;
+        }
+    }
+
+
+
+
 
 
 
@@ -1931,18 +2186,15 @@
     }
 
 
-
-
-
-    function checkRouteDeviation(currentPosition) {
+    function checkRouteDeviationImproved(currentPosition) {
         if (!routeCoordinates || routeCoordinates.length === 0 || !routeStarted) {
             return;
         }
 
-        // Calcular distancia al punto más cercano en la ruta
+        // Buscar distancia mínima a la ruta en un rango amplio
         let minDistance = Infinity;
-        const searchStart = Math.max(0, routePointIndex - 1);
-        const searchEnd = Math.min(routeCoordinates.length - 1, routePointIndex + 3);
+        const searchStart = Math.max(0, routePointIndex - 2);
+        const searchEnd = Math.min(routeCoordinates.length - 1, routePointIndex + 8);
 
         for (let i = searchStart; i <= searchEnd; i++) {
             const distance = calculateDistance(
@@ -1955,25 +2207,24 @@
             }
         }
 
-        // Si estamos a más de 50 metros de la ruta planificada
-        if (minDistance > 50) {
-            console.log(`Desvío detectado: ${minDistance.toFixed(0)}m de la ruta planificada`);
+        // Desvío más tolerante - 75 metros
+        if (minDistance > 75) {
+            console.log(`Desvío detectado: ${minDistance.toFixed(0)}m de la ruta`);
 
-            // Mostrar alerta solo una vez cada 30 segundos
             const now = Date.now();
-            if (!window.lastDeviationAlert || (now - window.lastDeviationAlert) > 30000) {
-                showNavigationToast('Te has desviado de la ruta planificada', 'warning');
+            if (!window.lastDeviationAlert || (now - window.lastDeviationAlert) > 20000) {
+                showNavigationToast(`Desvío de ${Math.round(minDistance)}m - Recalculando...`, 'warning');
                 window.lastDeviationAlert = now;
 
-                // Anuncio por voz
-                if (voiceEnabled && window.speechSynthesis) {
-                    const utterance = new SpeechSynthesisUtterance('Te has desviado de la ruta');
-                    utterance.lang = 'es-ES';
-                    window.speechSynthesis.speak(utterance);
-                }
+                // Recalcular automáticamente
+                setTimeout(() => {
+                    recalculateFromCurrentPosition();
+                }, 1000);
             }
         }
     }
+
+
 
 
     function recalculateFromCurrentPosition() {
@@ -1982,9 +2233,9 @@
             return;
         }
 
-        showNavigationToast('Recalculando navegación...', 'info');
+        showNavigationToast('Recalculando ruta...', 'info');
 
-        // Encontrar el punto más cercano en la ruta
+        // Encontrar el punto más cercano
         let closestDistance = Infinity;
         let closestIndex = 0;
 
@@ -2000,13 +2251,14 @@
             }
         }
 
-        // Actualizar posición en la ruta
-        routePointIndex = closestIndex;
-        targetPointIndex = Math.min(routeCoordinates.length - 1, closestIndex + 1);
+        // Actualizar posición con tolerancia
+        routePointIndex = Math.max(0, closestIndex - 1);
+        targetPointIndex = findNextMeaningfulPoint(routeCoordinates, routePointIndex);
 
-        // Marcar como iniciada si estamos cerca
-        if (closestDistance < 0.1) { // 100 metros
+        // Marcar como iniciada si estamos razonablemente cerca
+        if (closestDistance < 0.2) { // 200 metros
             routeStarted = true;
+            console.log(`Recalculado: ahora en punto ${routePointIndex}, hacia ${targetPointIndex}`);
         }
 
         // Regenerar instrucciones
@@ -2018,7 +2270,6 @@
             showNavigationToast('Navegación recalculada', 'success');
         }
     }
-
 
 
 
@@ -2041,30 +2292,39 @@
     }
 
     // === FUNCIÓN CORREGIDA PARA INICIALIZAR NAVEGACIÓN ===
+
+
     function initializeEnhancedNavigation(routeCoordinates) {
         if (!routeCoordinates || routeCoordinates.length < 2) {
             console.warn('No hay coordenadas suficientes para navegación');
             return;
         }
 
-        console.log('Inicializando navegación mejorada con', routeCoordinates.length, 'puntos');
+        console.log('Inicializando navegación inteligente con', routeCoordinates.length, 'puntos');
 
         // Reiniciar variables
         routeStarted = false;
         routePointIndex = 0;
-        targetPointIndex = 1;
+        targetPointIndex = findNextMeaningfulPoint(routeCoordinates, 0);
         currentInstructionIndex = 0;
         isNavigationActive = true;
+        lastAdvanceTime = 0;
+
+        // Ajustar distancia mínima según densidad de puntos
+        const avgDistance = calculateAveragePointDistance(routeCoordinates);
+        minimumSegmentDistance = Math.max(50, avgDistance * 3); // Mínimo 50m o 3 veces la distancia promedio
+
+        console.log(`Distancia mínima de segmento: ${minimumSegmentDistance}m`);
 
         // Generar instrucciones iniciales
-        const dummyStartPosition = {
+        const startPosition = {
             lat: routeCoordinates[0][0],
             lng: routeCoordinates[0][1]
         };
 
-        navigationInstructions = generateNavigationInstructions(routeCoordinates, dummyStartPosition);
+        navigationInstructions = generateNavigationInstructions(routeCoordinates, startPosition);
 
-        console.log('Sistema de navegación inicializado:', navigationInstructions.length, 'instrucciones iniciales');
+        console.log('Navegación inicializada con', navigationInstructions.length, 'instrucciones');
 
         if (navigationInstructions.length > 0) {
             updateNavigationUI(navigationInstructions[0], 0);
@@ -2072,6 +2332,31 @@
 
         setupVoiceControls();
     }
+
+
+    // === FUNCIÓN PARA CALCULAR DISTANCIA PROMEDIO ENTRE PUNTOS ===
+    function calculateAveragePointDistance(routeCoordinates) {
+        if (routeCoordinates.length < 2) return 50;
+
+        let totalDistance = 0;
+        let count = 0;
+
+        // Muestrear cada 10 puntos para eficiencia
+        for (let i = 0; i < routeCoordinates.length - 1; i += 10) {
+            const distance = calculateDistance(
+                routeCoordinates[i][0], routeCoordinates[i][1],
+                routeCoordinates[i + 1][0], routeCoordinates[i + 1][1]
+            ) * 1000;
+
+            totalDistance += distance;
+            count++;
+        }
+
+        return count > 0 ? totalDistance / count : 50;
+    }
+
+    console.log('✅ Navegación con avance inteligente implementada');
+
 
     // === FUNCIÓN PARA OBTENER ESTADÍSTICAS DE PROGRESO ===
     function getRouteProgress() {
@@ -2184,6 +2469,7 @@
     }
 
     // === MEJORAR LA FUNCIÓN onGPSSuccess ORIGINAL ===
+
     function onGPSSuccess(position) {
         const coords = position.coords;
         lastPosition = {
@@ -2204,7 +2490,7 @@
                 lastPosition.lat, lastPosition.lng
             );
 
-            if (distance < 0.1) {
+            if (distance < 0.1) { // Solo si es menos de 100m para evitar saltos GPS
                 traveledDistance += distance;
             }
         }
@@ -2216,13 +2502,14 @@
         updateMapPosition(lastPosition);
         updateStatistics(lastPosition);
 
-        // === NUEVAS CARACTERÍSTICAS DE NAVEGACIÓN ===
-
         // Actualizar navegación mejorada
         if (isNavigationActive) {
             updateNavigationInstructions(lastPosition);
             updateNavigationAccuracy(position);
         }
+
+        // === MEJORAR EL ALMACENAMIENTO DE TRACKING ===
+        storeTrackingPoint(position);
 
         // Enviar al servidor cada 30 segundos
         const now = Date.now();
@@ -2230,16 +2517,46 @@
             sendPositionUpdate(lastPosition);
             lastTrackingUpdate = now;
         }
-
-        // Almacenar punto para el tracking
-        trackingPoints.push({
-            lat: lastPosition.lat,
-            lng: lastPosition.lng,
-            timestamp: lastPosition.timestamp.toISOString(),
-            speed: lastPosition.speed,
-            accuracy: lastPosition.accuracy
-        });
     }
+
+
+    // === NUEVA FUNCIÓN PARA ALMACENAR PUNTOS DE TRACKING ===
+    function storeTrackingPoint(position) {
+        const now = new Date();
+
+        // Inicializar tiempo de inicio si es el primer punto
+        if (!routeTrackingData.startTime) {
+            routeTrackingData.startTime = now;
+            console.log('Iniciando tracking de ruta');
+        }
+
+        // Crear punto de tracking con más información
+        const trackingPoint = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            timestamp: now.toISOString(),
+            speed: position.coords.speed || 0,
+            accuracy: position.coords.accuracy,
+            heading: position.coords.heading || 0,
+            altitude: position.coords.altitude || null
+        };
+
+        // Agregar a ambos arrays para compatibilidad
+        trackingPoints.push(trackingPoint);
+        routeTrackingData.trackingPoints.push(trackingPoint);
+
+        // Actualizar estadísticas
+        updateTrackingStatistics(trackingPoint);
+
+        // Log cada 20 puntos para debug
+        if (trackingPoints.length % 20 === 0) {
+            console.log(`Tracking: ${trackingPoints.length} puntos registrados`);
+        }
+    }
+
+
+
+
 
     function showNavigationToast(message, type = 'info') {
         const toastEl = $('#gpsToast');
@@ -2388,6 +2705,43 @@
             updateNavigationStats(lastPosition);
         }
     }
+
+
+
+    // === FUNCIÓN PARA ACTUALIZAR ESTADÍSTICAS DE TRACKING ===
+    function updateTrackingStatistics(currentPoint) {
+        if (routeTrackingData.trackingPoints.length < 2) {
+            return;
+        }
+
+        const previousPoint = routeTrackingData.trackingPoints[routeTrackingData.trackingPoints.length - 2];
+
+        // Calcular distancia del segmento
+        const segmentDistance = calculateDistance(
+            previousPoint.lat, previousPoint.lng,
+            currentPoint.lat, currentPoint.lng
+        );
+
+        // Actualizar distancia total
+        routeTrackingData.totalDistance += segmentDistance;
+
+        // Actualizar velocidad máxima
+        const currentSpeedKmh = (currentPoint.speed || 0) * 3.6;
+        if (currentSpeedKmh > routeTrackingData.maxSpeed) {
+            routeTrackingData.maxSpeed = currentSpeedKmh;
+        }
+
+        // Calcular velocidad promedio
+        if (routeTrackingData.startTime) {
+            const elapsedHours = (new Date() - new Date(routeTrackingData.startTime)) / (1000 * 60 * 60);
+            if (elapsedHours > 0) {
+                routeTrackingData.averageSpeed = routeTrackingData.totalDistance / elapsedHours;
+            }
+        }
+    }
+
+
+
 
     function getInstructionIcon(type) {
         const iconMap = {
@@ -3131,6 +3485,10 @@
         });
     }
 
+
+
+
+    // === FUNCIÓN CORREGIDA PARA ENVIAR ACTUALIZACIONES DE POSICIÓN ===
     function sendPositionUpdate(position) {
         if (!gpsActive) return;
 
@@ -3142,18 +3500,91 @@
                 speed: position.speed,
                 heading: position.heading,
                 timestamp: position.timestamp.toISOString()
+            },
+            tracking_summary: {
+                total_points: trackingPoints.length,
+                total_distance: routeTrackingData.totalDistance,
+                average_speed: routeTrackingData.averageSpeed,
+                max_speed: routeTrackingData.maxSpeed
             }
         };
 
         makeRequest('/driver/update_route_progress/{{ completion.id }}', data,
             function (response) {
-                console.log('Position sent successfully');
+                console.log('Position update sent successfully:', {
+                    points: trackingPoints.length,
+                    distance: routeTrackingData.totalDistance.toFixed(2) + 'km'
+                });
             },
             function (error) {
-                console.error('Error sending position:', error);
+                console.error('Error sending position update:', error);
             }
         );
     }
+
+
+
+
+    // === FUNCIÓN PARA INICIALIZAR TRACKING ===
+    function initializeTracking() {
+        console.log('Inicializando sistema de tracking mejorado');
+
+        // Reiniciar datos de tracking
+        trackingPoints = [];
+        routeTrackingData = {
+            startTime: null,
+            endTime: null,
+            totalDistance: 0,
+            averageSpeed: 0,
+            maxSpeed: 0,
+            trackingPoints: []
+        };
+
+        traveledDistance = 0;
+        previousPosition = null;
+    }
+
+    // === FUNCIÓN PARA LIMPIAR TRACKING ===
+    function cleanupTracking() {
+        if (routeTrackingData.startTime && !routeTrackingData.endTime) {
+            routeTrackingData.endTime = new Date();
+        }
+
+        console.log('Tracking finalizado:', {
+            duration: routeTrackingData.endTime && routeTrackingData.startTime ?
+                (new Date(routeTrackingData.endTime) - new Date(routeTrackingData.startTime)) / 1000 : 0,
+            points: trackingPoints.length,
+            distance: routeTrackingData.totalDistance
+        });
+    }
+
+    // === FUNCIÓN PARA EXPORTAR DATOS DE TRACKING (DEBUG) ===
+    function exportTrackingData() {
+        const exportData = {
+            route_info: {
+                route_id: {{ route.id }
+    },
+    route_name: '{{ route.name }}',
+        completion_id: { { completion.id } }
+            },
+    tracking_summary: routeTrackingData,
+        tracking_points: trackingPoints
+        };
+
+    console.log('Datos de tracking:', exportData);
+
+    // Crear blob para descarga (útil para debug)
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tracking_data_route_{{ route.id }}_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    }
+
+
+
 
     function pauseNavigation() {
         if (gpsActive) {
@@ -3181,6 +3612,9 @@
         $('#tripSummary').show();
     }
 
+
+
+    // === FUNCIÓN CORREGIDA PARA COMPLETAR RUTA ===
     function completeRoute() {
         const fuelLevel = $('input[name="fuel_end_level"]:checked').val();
         const notes = $('#completion_notes').val().trim();
@@ -3198,6 +3632,10 @@
         const originalText = button.html();
         button.html('<span class="spinner-border spinner-border-sm me-2"></span>Completando...').prop('disabled', true);
 
+        // Finalizar tracking
+        routeTrackingData.endTime = new Date();
+
+        // Preparar datos completos para enviar
         const requestData = {
             fuel_level: parseInt(fuelLevel),
             notes: notes,
@@ -3205,9 +3643,17 @@
             trip_summary: {
                 total_time: Math.floor((new Date() - startTime) / 1000),
                 traveled_distance: traveledDistance,
-                tracking_points: trackingPoints
+                tracking_points: trackingPoints, // Array original para compatibilidad
+                route_tracking_data: routeTrackingData // Datos completos de tracking
             }
         };
+
+        console.log('Completando ruta con datos:', {
+            tracking_points_count: trackingPoints.length,
+            route_tracking_points_count: routeTrackingData.trackingPoints.length,
+            total_distance: routeTrackingData.totalDistance,
+            duration_minutes: routeTrackingData.startTime ? (new Date() - new Date(routeTrackingData.startTime)) / (1000 * 60) : 0
+        });
 
         makeRequest('/driver/complete_route/{{ completion.id }}', requestData,
             function (response) {
@@ -3218,6 +3664,7 @@
                     clearInterval(elapsedInterval);
                 }
 
+                console.log('Ruta completada exitosamente:', response);
                 showToast(response.message || 'Ruta completada exitosamente', 'success');
                 $('#completeModal').modal('hide');
 
@@ -3226,12 +3673,16 @@
                 }, 2000);
             },
             function (errorMessage) {
+                console.error('Error completando ruta:', errorMessage);
                 showToast(errorMessage, 'error');
                 button.html(originalText).prop('disabled', false);
             }
         );
     }
 
+
+
+    // === FUNCIÓN CORREGIDA PARA CANCELAR RUTA ===
     function cancelRoute(completionId) {
         const reason = prompt('¿Por qué cancelas la ruta?');
 
@@ -3243,15 +3694,23 @@
                 clearInterval(elapsedInterval);
             }
 
+            // Finalizar tracking
+            routeTrackingData.endTime = new Date();
+
             const requestData = {
                 reason: reason.trim(),
                 final_position: lastPosition,
                 trip_summary: {
                     total_time: Math.floor((new Date() - startTime) / 1000),
                     traveled_distance: traveledDistance,
-                    tracking_points: trackingPoints
+                    tracking_points: trackingPoints,
+                    route_tracking_data: routeTrackingData,
+                    cancelled: true,
+                    cancel_reason: reason.trim()
                 }
             };
+
+            console.log('Cancelando ruta con datos de tracking:', trackingPoints.length, 'puntos');
 
             makeRequest(`/driver/cancel_route/${completionId}`, requestData,
                 function (response) {
@@ -3266,6 +3725,9 @@
             );
         }
     }
+
+
+
 
     function showToast(message, type = 'info') {
         const toastEl = $('#gpsToast');
@@ -3299,6 +3761,71 @@
         });
         toast.show();
     }
+
+
+
+    // === FUNCIÓN MEJORADA PARA makeRequest CON MEJOR LOGGING ===
+    function makeRequestImproved(url, data, successCallback, errorCallback) {
+        console.log('Enviando request a:', url, {
+            data_size: JSON.stringify(data).length,
+            tracking_points: data.trip_summary ? data.trip_summary.tracking_points.length : 0
+        });
+
+        $.ajax({
+            url: url,
+            method: 'POST',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            timeout: 30000, // Aumentar timeout para datos grandes
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            },
+            success: function (response) {
+                console.log('Request exitoso:', url, response);
+                if (typeof successCallback === 'function') {
+                    successCallback(response);
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error('Request error:', {
+                    url: url,
+                    status: xhr.status,
+                    statusText: xhr.statusText,
+                    error: error,
+                    response: xhr.responseText
+                });
+
+                let errorMessage = 'Error de conexión';
+
+                if (xhr.status === 0) {
+                    errorMessage = 'Sin conexión a internet';
+                } else if (xhr.status === 413) {
+                    errorMessage = 'Datos demasiado grandes para enviar';
+                } else if (xhr.status === 404) {
+                    errorMessage = 'Recurso no encontrado';
+                } else if (xhr.status === 500) {
+                    errorMessage = 'Error del servidor';
+                } else if (status === 'timeout') {
+                    errorMessage = 'Tiempo de espera agotado';
+                } else {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        errorMessage = response.error || response.message || errorMessage;
+                    } catch (e) {
+                        // Usar mensaje por defecto
+                    }
+                }
+
+                if (typeof errorCallback === 'function') {
+                    errorCallback(errorMessage);
+                }
+            }
+        });
+    }
+
+
+
+
 
     function makeRequest(url, data, successCallback, errorCallback) {
         $.ajax({
@@ -3467,8 +3994,32 @@
 
             // Añadir clase para estilos móviles
             $('body').addClass('mobile-device');
+
+
+            // Inicializar tracking
+            initializeTracking();
+
+            // Agregar botón de debug si estamos en modo debug
+            if (window.location.search.includes('debug=true')) {
+                const debugBtn = $('<button>')
+                    .addClass('btn btn-sm btn-outline-info mt-2')
+                    .text('Exportar Tracking (Debug)')
+                    .on('click', exportTrackingData);
+
+                $('.card-body').first().append(debugBtn);
+            }
         });
+
     }
+
+    // === AGREGAR AL CLEANUP DE NAVEGACIÓN ===
+    const originalCleanupNavigation = cleanupNavigation;
+    cleanupNavigation = function () {
+        originalCleanupNavigation();
+        cleanupTracking();
+    };
+
+
 
     // Debug para identificar problemas de carga
     console.log('=== NAVIGATION DEBUG INFO ===');
@@ -3484,6 +4035,10 @@
     console.log('Voice synthesis support:', 'speechSynthesis' in window);
     console.log('Online status:', navigator.onLine);
     console.log('===============================');
+
+    makeRequest = makeRequestImproved;
+
+    console.log('✅ Sistema de guardado de tracking corregido e implementado');
 
     console.log('🚗 Sistema de navegación mejorado completamente cargado');
 </script>
