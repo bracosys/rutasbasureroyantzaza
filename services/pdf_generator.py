@@ -55,6 +55,32 @@ class PDFReportGenerator:
             textColor=colors.darkred
         ))
     
+    def generate_admin_report(self, metrics_data, fuel_data, vehicle_data, driver_data, route_data, user_name):
+        """Generar reporte administrativo completo con métricas de optimización"""
+        # Crear datos de optimización por defecto
+        optimization_data = {
+            'total_routes_optimized': 0,
+            'total_km_saved': 0,
+            'total_time_saved_minutes': 0,
+            'total_fuel_saved_liters': 0,
+            'average_improvement_percent': 0,
+            'best_optimization': None
+        }
+        optimized_routes_data = {'count': 0, 'total_km_saved': 0, 'routes': []}
+        
+        # Combinar datos
+        data = {
+            'metrics': metrics_data,
+            'fuel': fuel_data,
+            'vehicles': vehicle_data,
+            'drivers': driver_data,
+            'routes': route_data,
+            'optimization': optimization_data,
+            'optimized_routes': optimized_routes_data
+        }
+        
+        return self.generate_admin_report_with_optimization(data, user_name)
+    
     def generate_admin_report_with_optimization(self, data, user_name):
         """Generar reporte administrativo completo con métricas de optimización"""
         buffer = io.BytesIO()
@@ -125,7 +151,7 @@ class PDFReportGenerator:
         story.append(metrics_table)
         story.append(Spacer(1, 15))
         
-        # SECCIÓN 2: MÉTRICAS DE OPTIMIZACIÓN (NUEVA)
+        # SECCIÓN 2: MÉTRICAS DE OPTIMIZACIÓN
         story.append(Paragraph("2. MÉTRICAS DE OPTIMIZACIÓN DE RUTAS", self.styles['SectionTitle']))
         
         if optimization and optimization.get('total_routes_optimized', 0) > 0:
@@ -271,7 +297,10 @@ class PDFReportGenerator:
             route_data = [['Ruta', 'Consumo Promedio (L)', 'Completadas', 'Optimizada', 'Ahorro (km)']]
             
             # Crear un diccionario para búsqueda rápida de rutas optimizadas
-            optimized_dict = {route.id: route for route in optimized_routes if hasattr(route, 'id')}
+            optimized_dict = {}
+            for route in optimized_routes:
+                if hasattr(route, 'id'):
+                    optimized_dict[route.id] = route
             
             for route in routes[:10]:  # Top 10
                 route_name = route.get('route', 'N/A')
@@ -341,7 +370,7 @@ class PDFReportGenerator:
             recommendations.append(f"• Excelente ROI: Ahorros mensuales estimados de ${monthly_savings:.2f} en combustible.")
         
         if not recommendations:
-            recommendations.append("• Continuar monitoreando métricas y implementar optimizaciones graduales.")
+            recommendations.append("• Continuar monitoreando métricas e implementar optimizaciones graduales.")
         
         for rec in recommendations:
             story.append(Paragraph(rec, self.styles['Normal']))
@@ -349,18 +378,19 @@ class PDFReportGenerator:
         story.append(Spacer(1, 15))
         
         # Conclusión final
+        monthly_fuel_savings = optimization.get('total_fuel_saved_liters', 0) * 1.2
+        monthly_time_value = (optimization.get('total_time_saved_minutes', 0) / 60) * 20
+        monthly_maintenance = optimization.get('total_km_saved', 0) * 0.5
+        total_monthly_savings = monthly_fuel_savings + monthly_time_value + monthly_maintenance
+        
         conclusion_text = f"""
         <b>CONCLUSIÓN EJECUTIVA:</b><br/>
         El sistema de optimización de rutas de Yantzaza ha procesado {metrics.get('total_routes', 0)} rutas totales, 
         con {optimization.get('total_routes_optimized', 0)} rutas optimizadas que han generado ahorros de 
         {optimization.get('total_km_saved', 0)} km y {optimization.get('total_fuel_saved_liters', 0)} litros de combustible.
         <br/><br/>
-        El impacto económico mensual estimado es de ${(optimization.get('total_fuel_saved_liters', 0) * 1.2 + 
-        (optimization.get('total_time_saved_minutes', 0) / 60) * 20 + 
-        optimization.get('total_km_saved', 0) * 0.5):.2f}, 
-        con una proyección anual de ${((optimization.get('total_fuel_saved_liters', 0) * 1.2 + 
-        (optimization.get('total_time_saved_minutes', 0) / 60) * 20 + 
-        optimization.get('total_km_saved', 0) * 0.5) * 12):.2f}.
+        El impacto económico mensual estimado es de ${total_monthly_savings:.2f}, 
+        con una proyección anual de ${(total_monthly_savings * 12):.2f}.
         """
         
         story.append(Paragraph(conclusion_text, self.styles['Highlight']))
@@ -467,6 +497,30 @@ class PDFReportGenerator:
                 ('BACKGROUND', (0, 1), (-1, -1), colors.lightgreen)
             ]))
             story.append(driver_table)
+        
+        story.append(Spacer(1, 20))
+        
+        # Consumo de combustible
+        story.append(Paragraph("3. CONSUMO DE COMBUSTIBLE", self.styles['SectionTitle']))
+        
+        fuel_summary = [
+            ['Período', 'Consumo (L)', 'Rutas', 'Eficiencia'],
+            ['Hoy', str(fuel_data.get('today_consumption', 0)), str(fuel_data.get('today_routes', 0)), str(fuel_data.get('today_efficiency', 0))],
+            ['Esta Semana', str(fuel_data.get('week_consumption', 0)), str(fuel_data.get('week_routes', 0)), str(fuel_data.get('week_efficiency', 0))],
+            ['Este Mes', str(fuel_data.get('month_consumption', 0)), str(fuel_data.get('month_routes', 0)), str(fuel_data.get('month_efficiency', 0))]
+        ]
+        
+        fuel_table = Table(fuel_summary, colWidths=[1.5*inch, 1.2*inch, 1*inch, 1.3*inch])
+        fuel_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.orange),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.lightgreen)
+            ]))
+        story.append(driver_table)
         
         story.append(Spacer(1, 20))
         
