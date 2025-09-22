@@ -1,4 +1,4 @@
-<{% extends "base.html" %} {% block title %}Recorrido Completado - {{ completion.route.name }} - Sistema de Optimización
+{% extends "base.html" %} {% block title %}Recorrido Completado - {{ completion.route.name }} - Sistema de Optimización
     de Rutas{% endblock %} {% block page_title %}Recorrido Completado: {{ completion.route.name }}{% endblock %} {%
     block sidebar_items %} {% if current_user.is_admin %} <li class="nav-item">
     <a href="{{ url_for('admin_dashboard') }}" class="nav-link">
